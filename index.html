@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>dialora - Chat Visualizer</title>
+    
+    <!-- Подключение шрифтов -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Lora:ital,wght@0,400..700;1,400..700&display=swap" rel="stylesheet">
+    
+    <!-- Подключение стилей -->
+    <link rel="stylesheet" href="style.css">
+    
+    <!-- Подключение библиотеки marked.js -->
+    <script src="marked.min.js"></script>
+</head>
+<body>
+    <div class="header headBase">
+        <div class="logo">
+            <picture>
+                <source srcset="logo.webp" type="image/webp">
+                <img src="logo.png" alt="dialora logo">
+            </picture>
+            <span>dialora</span>
+        </div>
+        <button id="upload-other-btn">UPLOAD OTHER JSON</button>
+    </div>
+    <!-- Экран загрузки -->
+    <div id="upload-view">
+        <p class="description">
+            A simple tool to transform exported Google (Gemini) Studio Pro chat JSON files into beautiful, readable conversations. Upload your raw chat data and get a clean, formatted dialogue that's easy to read and share.
+        </p>
+
+        <div class="input-area">
+            Drag the file here or click to select
+            <span>Any text file with JSON is supported</span>
+        </div>
+        <input type="file" id="file-input" accept="*">
+
+    </div>
+
+    <!-- Экран результата -->
+    <div id="result-view" class="hidden">
+        <div class="overlay"></div>
+        <div id="chat-container">
+            <!-- Сюда будут вставляться сообщения -->
+        </div>
+    </div>
+
+    <!-- Подключение основного скрипта -->
+    <script src="app.js"></script>
+
+</body>
+</html>

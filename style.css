@@ -1,0 +1,421 @@
+/* Глобальные стили и переменные */
+:root {
+    --font-main: 'Lora', serif;
+    --font-secondary: 'Inter', sans-serif;
+    --bg-color: #f7f7f7;
+    --text-color: #333;
+    --primary-blue: #0A84FF;
+    --container-bg: #ffffff;
+    --border-color: #e0e0e0;
+    --button-bg: #f0f0f0;
+    --button-hover-bg: #e5e5e5;
+    --code-bg: #f5f5f5;
+    --code-block-bg: #2d2d2d;
+    --code-block-text: #f0f0f0;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    background-color: var(--bg-color);
+    font-family: var(--font-main);
+    color: var(--text-color);
+    display: flex;
+    justify-content: center;
+    padding: 40px 20px;
+    min-height: 100vh;
+    flex-direction: column;
+    align-items: center;
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* Стили для логотипа */
+.logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.logo picture {
+    height: 8vw;
+}
+
+.logo picture img {
+    height: 100%;
+}
+
+.logo span {
+    font-family: var(--font-main);
+    font-size: 6vw;
+    font-weight: 500;
+    margin-top: -1vw;
+}
+
+/* Экран загрузки */
+#upload-view {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 24px;
+    max-width: 600px;
+    width: 100%;
+    text-align: center;
+}
+
+#upload-view .description {
+    font-size: 16px;
+    line-height: 1.5;
+    color: #555;
+    max-width: 500px;
+}
+
+.input-area {
+    position: relative;
+    width: 100%;
+    height: 250px;
+    background-color: var(--container-bg);
+    border: 1px dashed var(--border-color);
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-size: 18px;
+    font-weight: 500;
+    color: #666;
+    cursor: pointer;
+    transition: background-color 0.2s, border-color 0.2s;
+}
+
+.input-area:hover, .input-area.drag-over {
+    border-color: var(--primary-blue);
+    background-color: #f7faff;
+}
+
+.input-area span {
+    font-size: 14px;
+    font-weight: 400;
+    color: #888;
+}
+
+#file-input {
+    display: none;
+}
+
+button {
+    padding: 12px 24px;
+    font-family: var(--font-secondary);
+    font-size: 14px;
+    font-weight: 500;
+    border: 1px solid var(--border-color);
+    background-color: var(--button-bg);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+button:hover {
+    background-color: var(--button-hover-bg);
+}
+
+/* Экран результата */
+#result-view {
+    max-width: 800px;
+    width: 100%;
+        margin-bottom: 70px;
+}
+
+#result-view .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 40px;
+}
+
+#result-view .logo span {
+    font-size: 28px;
+}
+
+#upload-other-btn {
+     background: linear-gradient(0deg, #f7f7f7, #ffffff, #ffffff);
+    border: none;
+    background-size: 100% 200%;
+    transition: background-position .4s;
+    background-position: 0% 100%;
+}
+
+#upload-other-btn:hover {
+    background-position: 0% 0%;
+}
+
+/* Стили для чата */
+#chat-container {
+    width: 100%;
+    text-align: justify;
+}
+
+.message {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 32px;
+}
+
+
+.user-message {
+    justify-content: flex-end;
+}
+
+.avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: bold;
+    font-size: 18px;
+}
+
+.avatar.user-avatar {
+    background-color: #000000;
+        order: 2;
+}
+
+.avatar.model-avatar {
+    background-color: var(--primary-blue);
+}
+
+.content {
+    width: 100%;
+}
+
+.user-message .content{
+    width: 60%;
+}
+
+.model-message .content-bubble {
+    background-color: var(--container-bg);
+    padding: 20px;
+    border-radius: 12px;
+}
+
+/* Стили для "мыслей" модели */
+.thought-section {
+    margin-bottom: 12px;
+}
+
+.show-thoughts-btn {
+    background: linear-gradient(270deg, #f7f7f7, #ffffff, #ffffff);
+    border: none;
+    background-size: 200% 100%;
+    transition: background-position .4s;
+    background-position: 100% 0%;
+}
+
+.show-thoughts-btn:hover {
+    background-position: 0% 0%;
+}
+
+.thought-container {
+    display: none;
+    background-color: #fafafa;
+    border: 1px solid #eee;
+    padding: 15px;
+    border-radius: 8px;
+    font-size: 14px;
+    color: #666;
+    line-height: 1.5;
+    width: 100%;
+    margin-top: 8px;
+}
+.thought-container p {
+    margin-bottom: 10px !important;
+}
+.thought-container p:last-child {
+    margin-bottom: 0 !important;
+}
+
+
+/* Стилизация Markdown элементов */
+.md-content h1, .md-content h2, .md-content h3, .md-content h4, .md-content h5, .md-content h6 {
+    font-family: var(--font-main);
+    margin-top: 1.5em;
+    margin-bottom: 0.8em;
+    font-weight: 600;
+}
+.md-content h1:first-child, .md-content h2:first-child, .md-content h3:first-child, .md-content h4:first-child {
+    margin-top: 0;
+}
+
+.md-content h1 { font-size: 2em; }
+.md-content h2 { font-size: 1.5em; }
+.md-content h3 { font-size: 1.25em; }
+.md-content h4 { font-size: 1em; }
+
+.md-content p {
+    line-height: 1.6;
+    margin-bottom: 1em;
+}
+.md-content p:last-child {
+    margin-bottom: 0;
+}
+
+.md-content ul, .md-content ol {
+    padding-left: 2em;
+    margin-bottom: 1em;
+}
+
+.md-content li {
+    margin-bottom: 0.5em;
+}
+
+.md-content blockquote {
+    border-left: 3px solid var(--border-color);
+    padding-left: 1.5em;
+    margin: 1.5em 0;
+    color: #666;
+    font-style: italic;
+}
+.md-content blockquote blockquote {
+    margin-top: 0.5em;
+}
+
+.md-content hr {
+    border: none;
+    border-top: 1px solid var(--border-color);
+    margin: 2em 0;
+}
+
+.md-content a {
+    color: var(--primary-blue);
+    text-decoration: none;
+}
+.md-content a:hover {
+    text-decoration: underline;
+}
+
+.md-content code {
+    background-color: var(--code-bg);
+    padding: 0.2em 0.4em;
+    border-radius: 4px;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+    font-size: 0.9em;
+}
+
+/* Стили для блока кода и кнопки копирования */
+.code-block-wrapper {
+    position: relative;
+    margin: 1em 0;
+}
+
+.copy-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background-color: #3a3a3a;
+    color: #e0e0e0;
+    border: 1px solid #555;
+    padding: 4px 8px;
+    font-size: 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.code-block-wrapper:hover .copy-btn {
+    opacity: 1;
+}
+
+.copy-btn:hover {
+    color: #2d2d2d;
+}
+
+.md-content pre {
+    background-color: var(--code-block-bg);
+    color: var(--code-block-text);
+    padding: 1em;
+    border-radius: 8px;
+    overflow-x: auto;
+    margin: 0; /* Убираем margin у pre, так как он теперь на wrapper */
+}
+
+.md-content pre code {
+    background-color: transparent;
+    padding: 0;
+    font-size: 1em;
+}
+
+.md-content table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1.5em 0;
+    display: block;
+    overflow-x: auto;
+}
+
+.md-content th, .md-content td {
+    border: 1px solid var(--border-color);
+    padding: 0.75em;
+}
+
+.md-content th {
+    background-color: #f8f9fa;
+    font-weight: 600;
+}
+.md-content table thead th:nth-child(1) { text-align: left; }
+.md-content table thead th:nth-child(2) { text-align: center; }
+.md-content table thead th:nth-child(3) { text-align: right; }
+.md-content table tbody td:nth-child(1) { text-align: left; }
+.md-content table tbody td:nth-child(2) { text-align: center; }
+.md-content table tbody td:nth-child(3) { text-align: right; }
+
+.header {
+    width: 100%;
+    display: flex;
+    align-items: center;
+        margin-bottom: 2vw;
+}
+
+.headBase {
+    justify-content: center;
+    align-items: center;
+}
+
+.headBase #upload-other-btn {
+    display: none;
+}
+
+.headWork {
+    max-width: 800px;
+    justify-content: space-between;
+}
+
+.headWork span {
+    font-size: 32px;
+    margin-top: -5px;
+}
+
+.headWork .logo picture {
+    height: 40px;
+}
+
+.overlay {
+        position: fixed;
+    height: 100px;
+    width: 100%;
+    bottom: 0;
+    background: linear-gradient(0deg, white, transparent);
+    left: 0;
+    z-index: 9999;
+}
