@@ -55,17 +55,53 @@ document.addEventListener('DOMContentLoaded', () => {
     function processFile(file) {
         const reader = new FileReader();
         reader.onload = (event) => {
+            // Сохраняем текст файла
+            let jsonString = event.target.result;
+            let jsonData = null;
+
             try {
-                const jsonData = JSON.parse(event.target.result);
+                // 1. Пробуем распарсить как обычно
+                jsonData = JSON.parse(jsonString);
+            } catch (originalError) {
+                console.warn('Обычный парсинг не удался, пробуем восстановить файл...', originalError);
+                
+                try {
+                    // 2. Логика восстановления для усеченных файлов (Google AI Studio exports)
+                    // Ищем последний разделитель объектов внутри массива chunks: "}, {"
+                    const lastSeparatorIndex = jsonString.lastIndexOf('}, {');
+                    
+                    if (lastSeparatorIndex !== -1) {
+                        // Отрезаем всё после последнего целого сообщения (включая запятую и начало битого сообщения)
+                        // lastSeparatorIndex указывает на начало "}, {", нам нужно сохранить "}" включительно (+1)
+                        let repairedString = jsonString.substring(0, lastSeparatorIndex + 1);
+                        
+                        // Добавляем закрывающие скобки для массива chunks, объекта chunkedPrompt и корневого объекта
+                        // Структура: { "chunkedPrompt": { "chunks": [ ... ] } }
+                        repairedString += ']} }';
+                        
+                        jsonData = JSON.parse(repairedString);
+                        console.log('Файл успешно восстановлен (последнее сообщение отброшено)');
+                        alert('Файл был поврежден, но мы смогли восстановить часть переписки.');
+                    } else {
+                        // Если разделителей нет или структура совсем другая, пробрасываем ошибку дальше
+                        throw originalError;
+                    }
+                } catch (repairError) {
+                    // Если и восстановление не помогло
+                    alert('Ошибка парсинга JSON. Файл слишком сильно поврежден.');
+                    console.error('JSON Parsing Error:', repairError);
+                    return;
+                }
+            }
+
+            // Если добрались сюда, значит jsonData получен (оригинальный или восстановленный)
+            if (jsonData) {
                 renderChat(jsonData);
                 // новый интерфейс
                 document.querySelector(".header").classList.remove("headBase");
                 document.querySelector(".header").classList.add("headWork");
                 uploadView.classList.add('hidden');
                 resultView.classList.remove('hidden');
-            } catch (error) {
-                alert('Ошибка парсинга JSON. Проверьте корректность данных в файле.');
-                console.error('JSON Parsing Error:', error);
             }
         };
         reader.onerror = () => alert('Не удалось прочитать файл.');
