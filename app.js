@@ -154,9 +154,28 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const content = document.createElement('div');
         content.className = 'content md-content';
-        content.innerHTML = marked.parse(chunk.text, { breaks: true });
         
-        addCopyButtons(content);
+        // --- ИСПРАВЛЕНИЕ ---
+        // Проверяем, есть ли текст, прежде чем отдавать его marked
+        if (chunk.text) {
+            content.innerHTML = marked.parse(chunk.text, { breaks: true });
+            addCopyButtons(content);
+        } 
+        // Если текста нет, проверяем наличие картинки (inlineImage)
+        else if (chunk.inlineImage) {
+            const img = document.createElement('img');
+            // Формируем data-uri для картинки
+            img.src = `data:${chunk.inlineImage.mimeType};base64,${chunk.inlineImage.data}`;
+            img.alt = "User uploaded image";
+            img.style.maxWidth = "100%";
+            img.style.borderRadius = "8px";
+            content.appendChild(img);
+        } 
+        else {
+            // Заглушка, если нет ни текста, ни картинки
+            content.innerHTML = '<em>[Empty message]</em>';
+        }
+        // --------------------
 
         messageEl.appendChild(avatar);
         messageEl.appendChild(content);
