@@ -5,7 +5,9 @@ const ASSETS_TO_CACHE = [
   './style.css', // Если есть
   './app.js',    // Ваш главный скрипт
   './logo.png',
-  './marked.min.js'
+  './marked.min.js',
+  './icon-192.png', // Добавлено
+  './icon-512.png'  // Добавлено
 ];
 
 // 1. Установка: кэшируем статику (оболочку приложения)
