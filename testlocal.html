@@ -2,173 +2,237 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Тест PWA File System</title>
+    <title>BioCipher True Hardware Key (PRF)</title>
     <style>
-        body { font-family: sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; }
-        button { padding: 10px 20px; font-size: 16px; cursor: pointer; margin-right: 10px; margin-bottom: 10px; }
-        textarea { width: 100%; height: 200px; margin-top: 10px; font-size: 14px; padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
-        #status { margin-top: 10px; padding: 10px; background: #f0f0f0; border-radius: 4px; color: #333; }
-        .hidden { display: none; }
-        .success { color: green; }
-        .error { color: red; }
+        body { font-family: monospace; padding: 20px; max-width: 600px; margin: 0 auto; }
+        input, button { font-size: 16px; padding: 10px; margin: 5px 0; width: 100%; box-sizing: border-box; }
+        #log { background: #f0f0f0; padding: 10px; border: 1px solid #ccc; margin-top: 20px; white-space: pre-wrap; word-break: break-all;}
+        .warn { color: #856404; background-color: #fff3cd; border: 1px solid #ffeeba; padding: 10px; margin-bottom: 10px;}
     </style>
 </head>
 <body>
 
-    <h1>📝 Редактор mytest.txt</h1>
-
-    <div id="controls">
-        <button id="btn-pick" onclick="pickNewFile()">📂 Выбрать файл (Первый раз)</button>
-        <button id="btn-reopen" class="hidden" onclick="reopenSavedFile()">🔄 Открыть файл (Продолжить)</button>
+    <h3>🛡️ True Hardware Key (PRF Mode)</h3>
+    <div class="warn">
+        Внимание: Этот метод требует поддержки расширения "PRF" (Chrome 115+, macOS TouchID или Windows Hello). Ключ НЕ хранится в браузере, он генерируется чипом.
     </div>
 
-    <div id="editor-area" class="hidden">
-        <p>Текущий файл: <b id="filename-display">...</b></p>
-        <textarea id="content-area" placeholder="Введите текст..."></textarea>
-        <br>
-        <button onclick="saveChanges()">💾 Сохранить изменения</button>
-        <button onclick="clearDb()">❌ Забыть файл</button>
-    </div>
+    <h3>1. Данные</h3>
+    <input type="text" id="secretInput" placeholder="Введите супер-секрет (123)">
+    
+    <h3>2. Действия</h3>
+    <button onclick="enrollAndEncrypt()">👆 Создать ключ чипом и ЗАШИФРОВАТЬ</button>
+    <button onclick="decryptWithHardwareKey()">👆 Восстановить ключ чипом и РАСШИФРОВАТЬ</button>
+    <button onclick="clearAll()">❌ Сброс</button>
 
-    <div id="status">Ожидание...</div>
+    <h3>3. Лог</h3>
+    <div id="log">Ожидание...</div>
 
     <script>
-        let fileHandle;
-        const DB_NAME = 'TextEditorDB';
-        const STORE_NAME = 'fileHandles';
+        const STORAGE_KEY = 'prf_secured_container';
 
-        // --- 1. Работа с IndexedDB (чтобы помнить файл) ---
-        const dbPromise = new Promise((resolve, reject) => {
-            const req = indexedDB.open(DB_NAME, 1);
-            req.onupgradeneeded = () => req.result.createObjectStore(STORE_NAME);
-            req.onsuccess = () => resolve(req.result);
-            req.onerror = () => reject(req.error);
-        });
-
-        async function saveHandleToDb(handle) {
-            const db = await dbPromise;
-            const tx = db.transaction(STORE_NAME, 'readwrite');
-            tx.objectStore(STORE_NAME).put(handle, 'mytest_file');
-            return new Promise(resolve => tx.oncomplete = resolve);
+        function log(msg) { 
+            document.getElementById('log').innerText += msg + "\n\n"; 
+            console.log(msg);
         }
+        function clearLog() { document.getElementById('log').innerText = ""; }
 
-        async function getHandleFromDb() {
-            const db = await dbPromise;
-            return new Promise(resolve => {
-                const tx = db.transaction(STORE_NAME, 'readonly');
-                const req = tx.objectStore(STORE_NAME).get('mytest_file');
-                req.onsuccess = () => resolve(req.result);
-            });
-        }
+        // --- ГЛАВНАЯ МАГИЯ: Получение ключа из железа ---
+        // Мы используем расширение "prf". Мы шлем соль, чип возвращает сырые байты ключа.
+        async function getHardwareKey(credentialId, salt) {
+            // Конвертируем соль в Uint8Array
+            const saltBytes = new Uint8Array(salt);
 
-        // --- 2. Основная логика ---
+            // Опции для получения доступа к чипу
+            const publicKey = {
+                challenge: window.crypto.getRandomValues(new Uint8Array(32)),
+                rpId: location.hostname,
+                userVerification: "required",
+                // Если мы уже знаем ID (при входе), указываем его, иначе пустой список
+                allowCredentials: credentialId ? [{
+                    type: 'public-key',
+                    id: credentialId,
+                    transports: ['internal']
+                }] : [],
+                // ЗАПРОС PRF: Просим чип вычислить секрет на основе соли
+                extensions: {
+                    prf: {
+                        eval: {
+                            first: saltBytes
+                        }
+                    }
+                }
+            };
 
-        // При загрузке страницы проверяем, есть ли сохраненный файл
-        window.addEventListener('DOMContentLoaded', async () => {
-            const handle = await getHandleFromDb();
-            if (handle) {
-                log(`Найден сохраненный файл: "${handle.name}". Нажмите "Открыть файл", чтобы продолжить.`);
-                document.getElementById('btn-pick').classList.add('hidden'); // Прячем кнопку выбора нового
-                document.getElementById('btn-reopen').classList.remove('hidden'); // Показываем кнопку возврата
-                fileHandle = handle;
-            } else {
-                log("Файл не выбран. Нажмите кнопку выбора.");
-            }
-        });
-
-        // Сценарий 1: Пользователь выбирает файл первый раз
-        async function pickNewFile() {
-            try {
-                // Фильтр только для текстовых файлов
-                [fileHandle] = await window.showOpenFilePicker({
-                    types: [{ description: 'Text Files', accept: { 'text/plain': ['.txt'] } }],
-                });
-                
-                // Сохраняем в БД
-                await saveHandleToDb(fileHandle);
-                
-                log(`Файл "${fileHandle.name}" выбран и запомнен!`, true);
-                enableEditor();
-                loadFileContent();
-            } catch (err) {
-                log("Выбор файла отменен.", false, true);
-                console.error(err);
-            }
-        }
-
-        // Сценарий 2: Пользователь вернулся и нажал "Открыть файл"
-        async function reopenSavedFile() {
-            if (!fileHandle) return;
-
-            // Проверяем права. Если их нет — браузер спросит пользователя.
-            // mode: 'readwrite' нужен, чтобы потом сохранять без вопросов
-            const options = { mode: 'readwrite' };
+            const assertion = await navigator.credentials.get({ publicKey });
             
-            if ((await fileHandle.queryPermission(options)) === 'granted') {
-                log("Доступ подтвержден автоматически.");
-                enableEditor();
-                loadFileContent();
-                return;
+            // Получаем ответ расширения PRF
+            const extensions = assertion.getClientExtensionResults();
+            if (!extensions.prf || !extensions.prf.results || !extensions.prf.results.first) {
+                throw new Error("Ваше устройство или браузер не поддерживает PRF (аппаратные ключи). Ключ не получен.");
             }
 
-            // Если прав нет, запрашиваем (появится системное окошко)
-            if ((await fileHandle.requestPermission(options)) === 'granted') {
-                log("Доступ получен!");
-                enableEditor();
-                loadFileContent();
-            } else {
-                log("В доступе отказано. Не могу прочитать файл.", false, true);
-            }
+            // Это сырой материал ключа, сгенерированный внутри чипа TouchID/FaceID
+            const inputKeyMaterial = new Uint8Array(extensions.prf.results.first);
+            
+            // Превращаем сырые байты в нормальный крипто-ключ AES-GCM через HKDF
+            // (Это стандартная процедура "очистки" ключа)
+            const keyDerivationKey = await window.crypto.subtle.importKey(
+                "raw", inputKeyMaterial, "HKDF", false, ["deriveKey"]
+            );
+
+            const aesKey = await window.crypto.subtle.deriveKey(
+                {
+                    name: "HKDF",
+                    hash: "SHA-256",
+                    salt: new Uint8Array(), // Можно добавить соль приложения
+                    info: new TextEncoder().encode("BioCipher Encryption") 
+                },
+                keyDerivationKey,
+                { name: "AES-GCM", length: 256 },
+                true,
+                ["encrypt", "decrypt"]
+            );
+
+            return { 
+                key: aesKey, 
+                credentialId: new Uint8Array(assertion.rawId) 
+            };
         }
 
-        // Чтение данных
-        async function loadFileContent() {
+
+        // --- 1. РЕГИСТРАЦИЯ + ШИФРОВАНИЕ ---
+        async function enrollAndEncrypt() {
+            clearLog();
+            const secret = document.getElementById('secretInput').value;
+            if (!secret) return alert('Введите данные!');
+
             try {
-                const file = await fileHandle.getFile();
-                const text = await file.text();
-                document.getElementById('content-area').value = text;
-                document.getElementById('filename-display').textContent = file.name;
-                log("Данные загружены из файла.");
-            } catch (err) {
-                log("Ошибка чтения файла: " + err, false, true);
+                log("1. Создаем новую пару ключей в биометрическом модуле...");
+                
+                // Шаг A: Создаем Credential (Регистрация пальца)
+                // Нам нужно включить PRF при создании
+                const createOptions = {
+                    publicKey: {
+                        challenge: window.crypto.getRandomValues(new Uint8Array(32)),
+                        rp: { name: "BioCipher PRF", id: location.hostname },
+                        user: { 
+                            id: window.crypto.getRandomValues(new Uint8Array(16)), 
+                            name: "user@prf", 
+                            displayName: "PRF User" 
+                        },
+                        pubKeyCredParams: [{ alg: -7, type: "public-key" }],
+                        authenticatorSelection: { userVerification: "required", authenticatorAttachment: "platform" },
+                        timeout: 60000,
+                        // Включаем PRF расширение
+                        extensions: { prf: {} }
+                    }
+                };
+
+                const newCred = await navigator.credentials.create(createOptions);
+                const credId = new Uint8Array(newCred.rawId);
+                
+                log("2. Биометрия привязана. Теперь генерируем аппаратный ключ шифрования...");
+                
+                // Шаг B: Генерируем случайную соль для этого файла
+                const fileSalt = window.crypto.getRandomValues(new Uint8Array(32));
+
+                // Шаг C: Сразу же просим чип вычислить ключ для этой соли.
+                // (Иногда можно получить сразу при create, но надежнее вызвать get)
+                const { key: hardwareKey } = await getHardwareKey(credId, fileSalt);
+
+                log("3. Ключ получен из чипа (в памяти). Шифруем данные...");
+
+                // Шаг D: Шифруем данные этим ключом
+                const iv = window.crypto.getRandomValues(new Uint8Array(12));
+                const encodedData = new TextEncoder().encode(secret);
+                const encryptedData = await window.crypto.subtle.encrypt(
+                    { name: "AES-GCM", iv: iv },
+                    hardwareKey,
+                    encodedData
+                );
+
+                // Шаг E: Сохраняем. 
+                // ВАЖНО: Мы НЕ сохраняем сам Key. Мы сохраняем CredentialID и Salt.
+                // Без пальца Salt бесполезна.
+                const dbRecord = {
+                    ciphertext: arrayBufferToBase64(encryptedData),
+                    iv: arrayBufferToBase64(iv),
+                    salt: arrayBufferToBase64(fileSalt),
+                    credId: arrayBufferToBase64(credId)
+                };
+
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(dbRecord));
+                document.getElementById('secretInput').value = "";
+                
+                log("УСПЕХ! В LocalStorage сохранены только:\n1. Шифр\n2. Соль\n3. ID пальца\nКЛЮЧ НЕ СОХРАНЕН!");
+
+            } catch (e) {
+                log("ОШИБКА: " + e.message);
+                console.error(e);
             }
         }
 
-        // Запись данных (Сохранить)
-        async function saveChanges() {
-            if (!fileHandle) return;
+        // --- 2. РАСШИФРОВКА ---
+        async function decryptWithHardwareKey() {
+            clearLog();
+            const recordStr = localStorage.getItem(STORAGE_KEY);
+            if (!recordStr) return log("Нет данных.");
+            const record = JSON.parse(recordStr);
+
             try {
-                log("Сохранение...");
-                const writable = await fileHandle.createWritable();
-                const content = document.getElementById('content-area').value;
-                await writable.write(content);
-                await writable.close();
-                log("✅ Файл успешно сохранен!", true);
-            } catch (err) {
-                log("Ошибка сохранения: " + err, false, true);
+                log("1. Читаем соль из базы. Запрашиваем ключ у чипа...");
+                
+                // Восстанавливаем буферы
+                const salt = base64ToArrayBuffer(record.salt);
+                const credId = base64ToArrayBuffer(record.credId);
+                const iv = base64ToArrayBuffer(record.iv);
+                const ciphertext = base64ToArrayBuffer(record.ciphertext);
+
+                // Самый важный момент: Мы отдаем Соль + Палец -> Получаем Ключ
+                const { key: hardwareKey } = await getHardwareKey(credId, salt);
+
+                log("2. Чип вернул ключ. Пробуем расшифровать...");
+
+                const decryptedBuffer = await window.crypto.subtle.decrypt(
+                    { name: "AES-GCM", iv: iv },
+                    hardwareKey,
+                    ciphertext
+                );
+
+                const result = new TextDecoder().decode(decryptedBuffer);
+                document.getElementById('secretInput').value = result;
+                log("УСПЕХ! Данные расшифрованы.");
+
+            } catch (e) {
+                log("ОШИБКА: " + e.message);
+                if (e.name === "OperationError") {
+                    log("Вероятно, чип вернул неверный ключ (другой палец?) или данные повреждены.");
+                }
             }
         }
 
-        // Сброс (для тестов)
-        async function clearDb() {
-            const db = await dbPromise;
-            const tx = db.transaction(STORE_NAME, 'readwrite');
-            tx.objectStore(STORE_NAME).delete('mytest_file');
-            await new Promise(resolve => tx.oncomplete = resolve);
-            location.reload();
+        function clearAll() {
+            localStorage.clear();
+            document.getElementById('secretInput').value = "";
+            clearLog();
+            log("База очищена.");
         }
 
-        // Вспомогательная функция интерфейса
-        function enableEditor() {
-            document.getElementById('controls').classList.add('hidden');
-            document.getElementById('editor-area').classList.remove('hidden');
+        // --- Helpers ---
+        function arrayBufferToBase64(buffer) {
+            let binary = '';
+            const bytes = new Uint8Array(buffer);
+            for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+            return window.btoa(binary);
         }
 
-        function log(msg, success = false, error = false) {
-            const el = document.getElementById('status');
-            el.textContent = msg;
-            el.className = success ? 'success' : (error ? 'error' : '');
+        function base64ToArrayBuffer(base64) {
+            const binary_string = window.atob(base64);
+            const len = binary_string.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) bytes[i] = binary_string.charCodeAt(i);
+            return bytes.buffer;
         }
     </script>
 </body>
