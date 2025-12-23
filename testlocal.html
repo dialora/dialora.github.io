@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebAuthn PRF Robust Test</title>
+    <title>WebAuthn PRF Robust Test 2</title>
     <style>
         body { font-family: -apple-system, sans-serif; padding: 20px; max-width: 500px; margin: auto; background: #f9f9f9; }
         .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 20px; }
@@ -116,7 +116,7 @@
                         challenge,
                         rp: { name: "Sho App", id: window.location.hostname },
                         user: { id: userHandle, name: "user@sho", displayName: "User" },
-                        pubKeyCredParams: [{ alg: -7, type: "public-key" }],
+                        pubKeyCredParams: [{ alg: -7, type: "public-key" }, { alg: -257, type: "public-key" }],
                         authenticatorSelection: { 
                             authenticatorAttachment: 'platform',
                             userVerification: 'required',
@@ -129,7 +129,6 @@
                 logger("Passkey создан. Credential ID сохранен.");
 
                 // 2. Сразу после создания делаем GET, чтобы получить PRF ключ
-                // В некоторых браузерах (Safari) ключ не возвращается в create()
                 logger("Запрашиваем PRF-ключ для шифрования...");
                 const keyRequest = await navigator.credentials.get({
                     publicKey: {
@@ -141,7 +140,8 @@
                 });
 
                 const extResults = keyRequest.getClientExtensionResults();
-                const prfRaw = extResults?.prf?.results?.eval?.first;
+                // ИСПРАВЛЕНИЕ: Убрали .eval из пути
+                const prfRaw = extResults?.prf?.results?.first;
 
                 if (!prfRaw) {
                     throw new Error("Ваше устройство не вернуло PRF ключ. Попробуйте другой браузер.");
@@ -184,7 +184,8 @@
                 });
 
                 const extResults = assertion.getClientExtensionResults();
-                const prfRaw = extResults?.prf?.results?.eval?.first;
+                // ИСПРАВЛЕНИЕ: Убрали .eval из пути
+                const prfRaw = extResults?.prf?.results?.first;
 
                 if (!prfRaw) throw new Error("Ключ PRF не найден в ответе");
 
