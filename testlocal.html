@@ -102,105 +102,115 @@
             return new TextDecoder().decode(decrypted);
         }
 
-        // --- 1. РЕГИСТРАЦИЯ И ЗАПИСЬ ---
-        document.getElementById('btn-save').onclick = async () => {
-            const master = document.getElementById('reg-master').value;
-            const data = document.getElementById('reg-data').value;
-            if (!master || !data) return alert("Заполните поля");
+        // --- 1. РЕГИСТРАЦИЯ (Исправлено для Safari 18) ---
+document.getElementById('btn-save').onclick = async () => {
+    const master = document.getElementById('reg-master').value;
+    const data = document.getElementById('reg-data').value;
+    if (!master || !data) return alert("Заполните поля");
 
-            try {
-                logMsg("Запрос биометрии (регистрация)...");
+    try {
+        logMsg("Запрос биометрии (Safari Passkey)...");
+        
+        const challenge = crypto.getRandomValues(new Uint8Array(32));
+        const userId = crypto.getRandomValues(new Uint8Array(16));
+
+        const credential = await navigator.credentials.create({
+            publicKey: {
+                challenge,
+                rp: { name: "Shifro App", id: window.location.hostname },
+                user: { 
+                    id: userId, 
+                    name: "user@shifro.local", 
+                    displayName: "Shifro User" 
+                },
+                pubKeyCredParams: [{ alg: -7, type: "public-key" }], // ES256
                 
-                const challenge = crypto.getRandomValues(new Uint8Array(32));
-                const userPath = crypto.getRandomValues(new Uint8Array(16));
-
-                const credential = await navigator.credentials.create({
-                    publicKey: {
-                        challenge,
-                        rp: { name: "S Test" },
-                        user: { id: userPath, name: "user@test", displayName: "User" },
-                        pubKeyCredParams: [{ alg: -7, type: "public-key" }], // ES256
-                        authenticatorSelection: { userVerification: "required" },
-                        extensions: {
-                            prf: { eval: { first: PRF_SALT } }
-                        }
+                // КРИТИЧНО ДЛЯ SAFARI:
+                authenticatorSelection: { 
+                    authenticatorAttachment: "platform", // Только FaceID/TouchID
+                    residentKey: "required",             // Обязательно Passkey
+                    userVerification: "required" 
+                },
+                
+                extensions: {
+                    prf: { 
+                        eval: { first: PRF_SALT } 
                     }
-                });
-
-                logMsg("Биометрия получена.");
-
-                // Извлекаем PRF ключ
-                const extensionResults = credential.getClientExtensionResults();
-                if (!extensionResults.prf || !extensionResults.prf.results) {
-                    throw new Error("Ваше устройство не поддерживает PRF расширение.");
                 }
-
-                const prfKeyRaw = new Uint8Array(extensionResults.prf.results.eval.first);
-                logMsg(`PRF Ключ создан (длина: ${prfKeyRaw.byteLength} байт)`);
-
-                // Шифруем связку Мастер-пароль + Данные
-                const payload = JSON.stringify({ master, data });
-                const encrypted = await encryptData(prfKeyRaw, payload);
-
-                // Сохраняем в IDB данные, которые НЕ являются секретными
-                await saveToDB({
-                    credentialId: credential.rawId,
-                    iv: encrypted.iv,
-                    ciphertext: encrypted.ciphertext
-                });
-
-                logMsg("Все данные зашифрованы и сохранены в IndexedDB.");
-                alert("Успешно! Теперь обновите страницу.");
-
-            } catch (e) {
-                logMsg("ОШИБКА: " + e.message);
-                console.error(e);
             }
-        };
+        });
 
-        // --- 2. АВТОРИЗАЦИЯ И ЧТЕНИЕ ---
-        document.getElementById('btn-load').onclick = async () => {
-            try {
-                const record = await getFromDB();
-                if (!record) return alert("Запись не найдена в базе. Сначала зарегистрируйтесь.");
+        const extensionResults = credential.getClientExtensionResults();
+        console.log("Debug Extensions:", extensionResults);
 
-                logMsg("Запрос биометрии (чтение)...");
+        // В Safari 18 PRF может лежать сразу в extensionResults.prf.results
+        if (!extensionResults.prf || !extensionResults.prf.results) {
+            logMsg("Результат расширений: " + JSON.stringify(extensionResults));
+            throw new Error("PRF не поддерживается или не разрешен в настройках Safari.");
+        }
 
-                const challenge = crypto.getRandomValues(new Uint8Array(32));
-                const assertion = await navigator.credentials.get({
-                    publicKey: {
-                        challenge,
-                        allowCredentials: [{
-                            id: record.credentialId,
-                            type: 'public-key'
-                        }],
-                        userVerification: "required",
-                        extensions: {
-                            prf: { eval: { first: PRF_SALT } }
-                        }
+        const prfKeyRaw = new Uint8Array(extensionResults.prf.results.eval.first);
+        logMsg("Ключ успешно создан!");
+
+        const payload = JSON.stringify({ master, data });
+        const encrypted = await encryptData(prfKeyRaw, payload);
+
+        await saveToDB({
+            credentialId: credential.rawId,
+            iv: encrypted.iv,
+            ciphertext: encrypted.ciphertext
+        });
+
+        alert("Готово! Пробуйте войти.");
+
+    } catch (e) {
+        logMsg("ОШИБКА: " + e.message);
+        console.error(e);
+    }
+};
+
+// --- 2. АВТОРИЗАЦИЯ (Исправлено для Safari 18) ---
+document.getElementById('btn-load').onclick = async () => {
+    try {
+        const record = await getFromDB();
+        if (!record) return alert("Запись не найдена.");
+
+        logMsg("Запрос FaceID/TouchID...");
+
+        const challenge = crypto.getRandomValues(new Uint8Array(32));
+        const assertion = await navigator.credentials.get({
+            publicKey: {
+                challenge,
+                allowCredentials: [{
+                    id: record.credentialId,
+                    type: 'public-key'
+                }],
+                userVerification: "required",
+                extensions: {
+                    prf: { 
+                        eval: { first: PRF_SALT } 
                     }
-                });
-
-                const extensionResults = assertion.getClientExtensionResults();
-                const prfKeyRaw = new Uint8Array(extensionResults.prf.results.eval.first);
-                
-                logMsg("Ключ успешно извлечен из биометрии.");
-
-                // Расшифровываем
-                const decryptedText = await decryptData(prfKeyRaw, record.iv, record.ciphertext);
-                const result = JSON.parse(decryptedText);
-
-                logMsg("--- УСПЕХ ---");
-                logMsg("Мастер-пароль: " + result.master);
-                logMsg("Данные: " + result.data);
-                
-                alert(`Расшифровано!\nПароль: ${result.master}\nДанные: ${result.data}`);
-
-            } catch (e) {
-                logMsg("ОШИБКА: " + e.message);
-                console.error(e);
+                }
             }
-        };
+        });
+
+        const extensionResults = assertion.getClientExtensionResults();
+        
+        if (!extensionResults.prf || !extensionResults.prf.results) {
+            throw new Error("Не удалось извлечь PRF ключ.");
+        }
+
+        const prfKeyRaw = new Uint8Array(extensionResults.prf.results.eval.first);
+        const decryptedText = await decryptData(prfKeyRaw, record.iv, record.ciphertext);
+        const result = JSON.parse(decryptedText);
+
+        logMsg("Взломано! Пароль: " + result.master);
+        alert(`Успех!\nМастер-пароль: ${result.master}`);
+
+    } catch (e) {
+        logMsg("ОШИБКА: " + e.message);
+    }
+};
 
         checkSupport();
     </script>
