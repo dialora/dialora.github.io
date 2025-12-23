@@ -3,216 +3,206 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebAuthn PRF Test</title>
+    <title>WebAuthn PRF Robust Test</title>
     <style>
-        body { font-family: sans-serif; padding: 20px; max-width: 500px; margin: auto; line-height: 1.5; }
-        .block { border: 1px solid #ccc; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
-        input { width: 100%; padding: 8px; margin: 5px 0 15px; box-sizing: border-box; }
-        button { width: 100%; padding: 10px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; }
-        button:disabled { background: #ccc; }
-        #log { background: #f4f4f4; padding: 10px; font-family: monospace; font-size: 12px; white-space: pre-wrap; border-radius: 4px; }
-        .status { font-weight: bold; margin-bottom: 10px; }
+        body { font-family: -apple-system, sans-serif; padding: 20px; max-width: 500px; margin: auto; background: #f9f9f9; }
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        input { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 16px; }
+        button { width: 100%; padding: 12px; background: #007AFF; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; margin-top: 10px; }
+        button:active { opacity: 0.8; }
+        #log { background: #222; color: #0f0; padding: 15px; border-radius: 8px; font-family: monospace; font-size: 12px; height: 200px; overflow-y: auto; white-space: pre-wrap; }
+        .status-ok { color: green; font-weight: bold; }
+        .status-err { color: red; font-weight: bold; }
     </style>
 </head>
 <body>
 
-    <h2>Biometric Test</h2>
-    
-    <div id="status" class="status">Проверка поддержки...</div>
+    <h3>WebAuthn Test</h3>
+    <div id="check-status">Проверка...</div>
 
-    <div class="block">
-        <h3>1. Регистрация (Запись)</h3>
-        <label>Мастер-пароль:</label>
-        <input type="password" id="reg-master" placeholder="Введите пароль">
-        <label>Секретные данные:</label>
-        <input type="text" id="reg-data" placeholder="Например: Секрет 123">
-        <button id="btn-save">Создать ключ и сохранить</button>
+    <div class="card">
+        <h4>1. Настройка (Регистрация)</h4>
+        <input type="password" id="inp-master" placeholder="Мастер-пароль">
+        <input type="text" id="inp-data" placeholder="Секретные данные">
+        <button id="btn-setup">Создать Passkey и зашифровать</button>
+        <p style="font-size: 11px; color: #666;">Внимание: может потребоваться ввести биометрию дважды (создание + первый ключ).</p>
     </div>
 
-    <div class="block">
-        <h3>2. Авторизация (Чтение)</h3>
-        <p>После обновления страницы нажмите кнопку ниже:</p>
-        <button id="btn-load">Войти по биометрии</button>
+    <div class="card">
+        <h4>2. Вход (Дешифровка)</h4>
+        <button id="btn-unlock" style="background: #34C759;">Войти через FaceID / TouchID</button>
     </div>
 
-    <h4>Лог событий:</h4>
-    <div id="log">Ожидание действий...</div>
+    <div id="log">Консоль готова...</div>
 
     <script>
-        const LOG = document.getElementById('log');
-        const logMsg = (m) => { LOG.innerText += `\n> ${m}`; console.log(m); };
+        const logEl = document.getElementById('log');
+        const statusEl = document.getElementById('check-status');
+        const PRF_SALT = new Uint8Array(32).fill(0x73); // "s" - статичная соль 32 байта
 
-        // Конфигурация
-        const DB_NAME = 'PRF_Test_DB';
-        const STORE_NAME = 'config';
-        const PRF_SALT = new Uint8Array(32).fill(1); // Статичная соль для PRF
+        const logger = (msg, obj = null) => {
+            const text = obj ? `${msg} ${JSON.stringify(obj, null, 2)}` : msg;
+            logEl.innerText += `\n> ${text}`;
+            logEl.scrollTop = logEl.scrollHeight;
+            console.log(msg, obj);
+        };
 
-        // --- РАБОТА С IDB ---
-        async function openDB() {
-            return new Promise((res) => {
-                const req = indexedDB.open(DB_NAME, 1);
-                req.onupgradeneeded = () => req.result.createObjectStore(STORE_NAME);
-                req.onsuccess = () => res(req.result);
-            });
-        }
-
-        async function saveToDB(data) {
-            const db = await openDB();
-            const tx = db.transaction(STORE_NAME, 'readwrite');
-            tx.objectStore(STORE_NAME).put(data, 'biometric_record');
-            return new Promise(res => tx.oncomplete = res);
-        }
-
-        async function getFromDB() {
-            const db = await openDB();
-            return new Promise(res => {
-                const req = db.transaction(STORE_NAME).objectStore(STORE_NAME).get('biometric_record');
-                req.onsuccess = () => res(req.result);
-            });
-        }
-
-        // --- ПРОВЕРКА ПОДДЕРЖКИ ---
-        async function checkSupport() {
-            const isWebAuthn = !!window.PublicKeyCredential;
-            const isPrf = window.PublicKeyCredential?.isConditionalMediationAvailable; // Грубая проверка
-            
-            if (!isWebAuthn) {
-                document.getElementById('status').innerText = "❌ WebAuthn не поддерживается";
-                return false;
+        // --- IDB UTILS ---
+        const DB = {
+            async open() {
+                return new Promise(res => {
+                    const r = indexedDB.open('PRF_Test', 1);
+                    r.onupgradeneeded = () => r.result.createObjectStore('vault');
+                    r.onsuccess = () => res(r.result);
+                });
+            },
+            async save(val) {
+                const db = await this.open();
+                const tx = db.transaction('vault', 'readwrite');
+                tx.objectStore('vault').put(val, 'user_data');
+            },
+            async get() {
+                const db = await this.open();
+                return new Promise(res => {
+                    const r = db.transaction('vault').objectStore('vault').get('user_data');
+                    r.onsuccess = () => res(r.result);
+                });
             }
-            document.getElementById('status').innerText = "✅ WebAuthn доступен. Готов к тесту.";
-            return true;
+        };
+
+        // --- CRYPTO UTILS ---
+        async function deriveKey(rawBytes) {
+            return crypto.subtle.importKey('raw', rawBytes, 'AES-GCM', false, ['encrypt', 'decrypt']);
         }
 
-        // --- ШИФРОВАНИЕ ---
-        async function encryptData(keyBuffer, plaintext) {
-            const key = await crypto.subtle.importKey('raw', keyBuffer, 'AES-GCM', false, ['encrypt']);
+        async function encrypt(rawKey, text) {
+            const key = await deriveKey(rawKey);
             const iv = crypto.getRandomValues(new Uint8Array(12));
-            const ciphertext = await crypto.subtle.encrypt(
-                { name: 'AES-GCM', iv }, 
-                key, 
-                new TextEncoder().encode(plaintext)
-            );
+            const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(text));
             return { iv, ciphertext };
         }
 
-        async function decryptData(keyBuffer, iv, ciphertext) {
-            const key = await crypto.subtle.importKey('raw', keyBuffer, 'AES-GCM', false, ['decrypt']);
-            const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
-            return new TextDecoder().decode(decrypted);
+        async function decrypt(rawKey, iv, ciphertext) {
+            const key = await deriveKey(rawKey);
+            const dec = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
+            return new TextDecoder().decode(dec);
         }
 
-        // --- 1. РЕГИСТРАЦИЯ (Исправлено для Safari 18) ---
-document.getElementById('btn-save').onclick = async () => {
-    const master = document.getElementById('reg-master').value;
-    const data = document.getElementById('reg-data').value;
-    if (!master || !data) return alert("Заполните поля");
-
-    try {
-        logMsg("Запрос биометрии (Safari Passkey)...");
-        
-        const challenge = crypto.getRandomValues(new Uint8Array(32));
-        const userId = crypto.getRandomValues(new Uint8Array(16));
-
-        const credential = await navigator.credentials.create({
-            publicKey: {
-                challenge,
-                rp: { name: "Shifro App", id: window.location.hostname },
-                user: { 
-                    id: userId, 
-                    name: "user@shifro.local", 
-                    displayName: "Shifro User" 
-                },
-                pubKeyCredParams: [{ alg: -7, type: "public-key" }], // ES256
-                
-                // КРИТИЧНО ДЛЯ SAFARI:
-                authenticatorSelection: { 
-                    authenticatorAttachment: "platform", // Только FaceID/TouchID
-                    residentKey: "required",             // Обязательно Passkey
-                    userVerification: "required" 
-                },
-                
-                extensions: {
-                    prf: { 
-                        eval: { first: PRF_SALT } 
-                    }
-                }
+        // --- ПРОВЕРКА ПОДДЕРЖКИ ---
+        (async () => {
+            const supported = window.PublicKeyCredential && 
+                await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+            if (supported) {
+                statusEl.innerHTML = '<span class="status-ok">✅ Биометрия поддерживается</span>';
+            } else {
+                statusEl.innerHTML = '<span class="status-err">❌ Биометрия недоступна</span>';
             }
-        });
+        })();
 
-        const extensionResults = credential.getClientExtensionResults();
-        console.log("Debug Extensions:", extensionResults);
+        // --- ШАГ 1: РЕГИСТРАЦИЯ И ШИФРОВАНИЕ ---
+        document.getElementById('btn-setup').onclick = async () => {
+            const master = document.getElementById('inp-master').value;
+            const secret = document.getElementById('inp-data').value;
+            if (!master || !secret) return alert("Введите данные");
 
-        // В Safari 18 PRF может лежать сразу в extensionResults.prf.results
-        if (!extensionResults.prf || !extensionResults.prf.results) {
-            logMsg("Результат расширений: " + JSON.stringify(extensionResults));
-            throw new Error("PRF не поддерживается или не разрешен в настройках Safari.");
-        }
+            try {
+                // 1. Создаем Passkey
+                logger("Создание Passkey...");
+                const challenge = crypto.getRandomValues(new Uint8Array(32));
+                const userHandle = crypto.getRandomValues(new Uint8Array(16));
 
-        const prfKeyRaw = new Uint8Array(extensionResults.prf.results.eval.first);
-        logMsg("Ключ успешно создан!");
-
-        const payload = JSON.stringify({ master, data });
-        const encrypted = await encryptData(prfKeyRaw, payload);
-
-        await saveToDB({
-            credentialId: credential.rawId,
-            iv: encrypted.iv,
-            ciphertext: encrypted.ciphertext
-        });
-
-        alert("Готово! Пробуйте войти.");
-
-    } catch (e) {
-        logMsg("ОШИБКА: " + e.message);
-        console.error(e);
-    }
-};
-
-// --- 2. АВТОРИЗАЦИЯ (Исправлено для Safari 18) ---
-document.getElementById('btn-load').onclick = async () => {
-    try {
-        const record = await getFromDB();
-        if (!record) return alert("Запись не найдена.");
-
-        logMsg("Запрос FaceID/TouchID...");
-
-        const challenge = crypto.getRandomValues(new Uint8Array(32));
-        const assertion = await navigator.credentials.get({
-            publicKey: {
-                challenge,
-                allowCredentials: [{
-                    id: record.credentialId,
-                    type: 'public-key'
-                }],
-                userVerification: "required",
-                extensions: {
-                    prf: { 
-                        eval: { first: PRF_SALT } 
+                const cred = await navigator.credentials.create({
+                    publicKey: {
+                        challenge,
+                        rp: { name: "Sho App", id: window.location.hostname },
+                        user: { id: userHandle, name: "user@sho", displayName: "User" },
+                        pubKeyCredParams: [{ alg: -7, type: "public-key" }],
+                        authenticatorSelection: { 
+                            authenticatorAttachment: 'platform',
+                            userVerification: 'required',
+                            residentKey: 'required'
+                        },
+                        extensions: { prf: { eval: { first: PRF_SALT } } }
                     }
+                });
+
+                logger("Passkey создан. Credential ID сохранен.");
+
+                // 2. Сразу после создания делаем GET, чтобы получить PRF ключ
+                // В некоторых браузерах (Safari) ключ не возвращается в create()
+                logger("Запрашиваем PRF-ключ для шифрования...");
+                const keyRequest = await navigator.credentials.get({
+                    publicKey: {
+                        challenge,
+                        allowCredentials: [{ id: cred.rawId, type: 'public-key' }],
+                        userVerification: 'required',
+                        extensions: { prf: { eval: { first: PRF_SALT } } }
+                    }
+                });
+
+                const extResults = keyRequest.getClientExtensionResults();
+                const prfRaw = extResults?.prf?.results?.eval?.first;
+
+                if (!prfRaw) {
+                    throw new Error("Ваше устройство не вернуло PRF ключ. Попробуйте другой браузер.");
                 }
+
+                logger("PRF ключ получен. Шифруем...");
+                const encryptedPayload = await encrypt(new Uint8Array(prfRaw), JSON.stringify({ master, secret }));
+
+                await DB.save({
+                    credId: cred.rawId,
+                    iv: encryptedPayload.iv,
+                    data: encryptedPayload.ciphertext
+                });
+
+                logger("УСПЕХ! Данные в базе. Обновите страницу для теста.");
+                alert("Успешно зарегистрировано!");
+
+            } catch (err) {
+                logger("ОШИБКА: " + err.name, err.message);
+                console.error(err);
             }
-        });
+        };
 
-        const extensionResults = assertion.getClientExtensionResults();
-        
-        if (!extensionResults.prf || !extensionResults.prf.results) {
-            throw new Error("Не удалось извлечь PRF ключ.");
-        }
+        // --- ШАГ 2: ВХОД ---
+        document.getElementById('btn-unlock').onclick = async () => {
+            try {
+                const record = await DB.get();
+                if (!record) return alert("Нет данных в базе");
 
-        const prfKeyRaw = new Uint8Array(extensionResults.prf.results.eval.first);
-        const decryptedText = await decryptData(prfKeyRaw, record.iv, record.ciphertext);
-        const result = JSON.parse(decryptedText);
+                logger("Запрос биометрии...");
+                const challenge = crypto.getRandomValues(new Uint8Array(32));
 
-        logMsg("Взломано! Пароль: " + result.master);
-        alert(`Успех!\nМастер-пароль: ${result.master}`);
+                const assertion = await navigator.credentials.get({
+                    publicKey: {
+                        challenge,
+                        allowCredentials: [{ id: record.credId, type: 'public-key' }],
+                        userVerification: 'required',
+                        extensions: { prf: { eval: { first: PRF_SALT } } }
+                    }
+                });
 
-    } catch (e) {
-        logMsg("ОШИБКА: " + e.message);
-    }
-};
+                const extResults = assertion.getClientExtensionResults();
+                const prfRaw = extResults?.prf?.results?.eval?.first;
 
-        checkSupport();
+                if (!prfRaw) throw new Error("Ключ PRF не найден в ответе");
+
+                logger("Ключ получен, расшифровываю...");
+                const decrypted = await decrypt(new Uint8Array(prfRaw), record.iv, record.data);
+                const result = JSON.parse(decrypted);
+
+                logger("✅ ДОСТУП РАЗРЕШЕН!");
+                logger("Мастер-пароль: " + result.master);
+                logger("Данные: " + result.secret);
+
+                alert(`Привет! Твой пароль: ${result.master}`);
+
+            } catch (err) {
+                logger("ОШИБКА: " + err.message);
+                console.error(err);
+            }
+        };
     </script>
 </body>
 </html>
