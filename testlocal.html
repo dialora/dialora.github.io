@@ -2,238 +2,207 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>BioCipher True Hardware Key (PRF)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebAuthn PRF Test</title>
     <style>
-        body { font-family: monospace; padding: 20px; max-width: 600px; margin: 0 auto; }
-        input, button { font-size: 16px; padding: 10px; margin: 5px 0; width: 100%; box-sizing: border-box; }
-        #log { background: #f0f0f0; padding: 10px; border: 1px solid #ccc; margin-top: 20px; white-space: pre-wrap; word-break: break-all;}
-        .warn { color: #856404; background-color: #fff3cd; border: 1px solid #ffeeba; padding: 10px; margin-bottom: 10px;}
+        body { font-family: sans-serif; padding: 20px; max-width: 500px; margin: auto; line-height: 1.5; }
+        .block { border: 1px solid #ccc; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+        input { width: 100%; padding: 8px; margin: 5px 0 15px; box-sizing: border-box; }
+        button { width: 100%; padding: 10px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; }
+        button:disabled { background: #ccc; }
+        #log { background: #f4f4f4; padding: 10px; font-family: monospace; font-size: 12px; white-space: pre-wrap; border-radius: 4px; }
+        .status { font-weight: bold; margin-bottom: 10px; }
     </style>
 </head>
 <body>
 
-    <h3>🛡️ True Hardware Key (PRF Mode)</h3>
-    <div class="warn">
-        Внимание: Этот метод требует поддержки расширения "PRF" (Chrome 115+, macOS TouchID или Windows Hello). Ключ НЕ хранится в браузере, он генерируется чипом.
+    <h2>Biometric Test</h2>
+    
+    <div id="status" class="status">Проверка поддержки...</div>
+
+    <div class="block">
+        <h3>1. Регистрация (Запись)</h3>
+        <label>Мастер-пароль:</label>
+        <input type="password" id="reg-master" placeholder="Введите пароль">
+        <label>Секретные данные:</label>
+        <input type="text" id="reg-data" placeholder="Например: Секрет 123">
+        <button id="btn-save">Создать ключ и сохранить</button>
     </div>
 
-    <h3>1. Данные</h3>
-    <input type="text" id="secretInput" placeholder="Введите супер-секрет (123)">
-    
-    <h3>2. Действия</h3>
-    <button onclick="enrollAndEncrypt()">👆 Создать ключ чипом и ЗАШИФРОВАТЬ</button>
-    <button onclick="decryptWithHardwareKey()">👆 Восстановить ключ чипом и РАСШИФРОВАТЬ</button>
-    <button onclick="clearAll()">❌ Сброс</button>
+    <div class="block">
+        <h3>2. Авторизация (Чтение)</h3>
+        <p>После обновления страницы нажмите кнопку ниже:</p>
+        <button id="btn-load">Войти по биометрии</button>
+    </div>
 
-    <h3>3. Лог</h3>
-    <div id="log">Ожидание...</div>
+    <h4>Лог событий:</h4>
+    <div id="log">Ожидание действий...</div>
 
     <script>
-        const STORAGE_KEY = 'prf_secured_container';
+        const LOG = document.getElementById('log');
+        const logMsg = (m) => { LOG.innerText += `\n> ${m}`; console.log(m); };
 
-        function log(msg) { 
-            document.getElementById('log').innerText += msg + "\n\n"; 
-            console.log(msg);
+        // Конфигурация
+        const DB_NAME = 'PRF_Test_DB';
+        const STORE_NAME = 'config';
+        const PRF_SALT = new Uint8Array(32).fill(1); // Статичная соль для PRF
+
+        // --- РАБОТА С IDB ---
+        async function openDB() {
+            return new Promise((res) => {
+                const req = indexedDB.open(DB_NAME, 1);
+                req.onupgradeneeded = () => req.result.createObjectStore(STORE_NAME);
+                req.onsuccess = () => res(req.result);
+            });
         }
-        function clearLog() { document.getElementById('log').innerText = ""; }
 
-        // --- ГЛАВНАЯ МАГИЯ: Получение ключа из железа ---
-        // Мы используем расширение "prf". Мы шлем соль, чип возвращает сырые байты ключа.
-        async function getHardwareKey(credentialId, salt) {
-            // Конвертируем соль в Uint8Array
-            const saltBytes = new Uint8Array(salt);
+        async function saveToDB(data) {
+            const db = await openDB();
+            const tx = db.transaction(STORE_NAME, 'readwrite');
+            tx.objectStore(STORE_NAME).put(data, 'biometric_record');
+            return new Promise(res => tx.oncomplete = res);
+        }
 
-            // Опции для получения доступа к чипу
-            const publicKey = {
-                challenge: window.crypto.getRandomValues(new Uint8Array(32)),
-                rpId: location.hostname,
-                userVerification: "required",
-                // Если мы уже знаем ID (при входе), указываем его, иначе пустой список
-                allowCredentials: credentialId ? [{
-                    type: 'public-key',
-                    id: credentialId,
-                    transports: ['internal']
-                }] : [],
-                // ЗАПРОС PRF: Просим чип вычислить секрет на основе соли
-                extensions: {
-                    prf: {
-                        eval: {
-                            first: saltBytes
+        async function getFromDB() {
+            const db = await openDB();
+            return new Promise(res => {
+                const req = db.transaction(STORE_NAME).objectStore(STORE_NAME).get('biometric_record');
+                req.onsuccess = () => res(req.result);
+            });
+        }
+
+        // --- ПРОВЕРКА ПОДДЕРЖКИ ---
+        async function checkSupport() {
+            const isWebAuthn = !!window.PublicKeyCredential;
+            const isPrf = window.PublicKeyCredential?.isConditionalMediationAvailable; // Грубая проверка
+            
+            if (!isWebAuthn) {
+                document.getElementById('status').innerText = "❌ WebAuthn не поддерживается";
+                return false;
+            }
+            document.getElementById('status').innerText = "✅ WebAuthn доступен. Готов к тесту.";
+            return true;
+        }
+
+        // --- ШИФРОВАНИЕ ---
+        async function encryptData(keyBuffer, plaintext) {
+            const key = await crypto.subtle.importKey('raw', keyBuffer, 'AES-GCM', false, ['encrypt']);
+            const iv = crypto.getRandomValues(new Uint8Array(12));
+            const ciphertext = await crypto.subtle.encrypt(
+                { name: 'AES-GCM', iv }, 
+                key, 
+                new TextEncoder().encode(plaintext)
+            );
+            return { iv, ciphertext };
+        }
+
+        async function decryptData(keyBuffer, iv, ciphertext) {
+            const key = await crypto.subtle.importKey('raw', keyBuffer, 'AES-GCM', false, ['decrypt']);
+            const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
+            return new TextDecoder().decode(decrypted);
+        }
+
+        // --- 1. РЕГИСТРАЦИЯ И ЗАПИСЬ ---
+        document.getElementById('btn-save').onclick = async () => {
+            const master = document.getElementById('reg-master').value;
+            const data = document.getElementById('reg-data').value;
+            if (!master || !data) return alert("Заполните поля");
+
+            try {
+                logMsg("Запрос биометрии (регистрация)...");
+                
+                const challenge = crypto.getRandomValues(new Uint8Array(32));
+                const userPath = crypto.getRandomValues(new Uint8Array(16));
+
+                const credential = await navigator.credentials.create({
+                    publicKey: {
+                        challenge,
+                        rp: { name: "S Test" },
+                        user: { id: userPath, name: "user@test", displayName: "User" },
+                        pubKeyCredParams: [{ alg: -7, type: "public-key" }], // ES256
+                        authenticatorSelection: { userVerification: "required" },
+                        extensions: {
+                            prf: { eval: { first: PRF_SALT } }
                         }
                     }
+                });
+
+                logMsg("Биометрия получена.");
+
+                // Извлекаем PRF ключ
+                const extensionResults = credential.getClientExtensionResults();
+                if (!extensionResults.prf || !extensionResults.prf.results) {
+                    throw new Error("Ваше устройство не поддерживает PRF расширение.");
                 }
-            };
 
-            const assertion = await navigator.credentials.get({ publicKey });
-            
-            // Получаем ответ расширения PRF
-            const extensions = assertion.getClientExtensionResults();
-            if (!extensions.prf || !extensions.prf.results || !extensions.prf.results.first) {
-                throw new Error("Ваше устройство или браузер не поддерживает PRF (аппаратные ключи). Ключ не получен.");
-            }
+                const prfKeyRaw = new Uint8Array(extensionResults.prf.results.eval.first);
+                logMsg(`PRF Ключ создан (длина: ${prfKeyRaw.byteLength} байт)`);
 
-            // Это сырой материал ключа, сгенерированный внутри чипа TouchID/FaceID
-            const inputKeyMaterial = new Uint8Array(extensions.prf.results.first);
-            
-            // Превращаем сырые байты в нормальный крипто-ключ AES-GCM через HKDF
-            // (Это стандартная процедура "очистки" ключа)
-            const keyDerivationKey = await window.crypto.subtle.importKey(
-                "raw", inputKeyMaterial, "HKDF", false, ["deriveKey"]
-            );
+                // Шифруем связку Мастер-пароль + Данные
+                const payload = JSON.stringify({ master, data });
+                const encrypted = await encryptData(prfKeyRaw, payload);
 
-            const aesKey = await window.crypto.subtle.deriveKey(
-                {
-                    name: "HKDF",
-                    hash: "SHA-256",
-                    salt: new Uint8Array(), // Можно добавить соль приложения
-                    info: new TextEncoder().encode("BioCipher Encryption") 
-                },
-                keyDerivationKey,
-                { name: "AES-GCM", length: 256 },
-                true,
-                ["encrypt", "decrypt"]
-            );
+                // Сохраняем в IDB данные, которые НЕ являются секретными
+                await saveToDB({
+                    credentialId: credential.rawId,
+                    iv: encrypted.iv,
+                    ciphertext: encrypted.ciphertext
+                });
 
-            return { 
-                key: aesKey, 
-                credentialId: new Uint8Array(assertion.rawId) 
-            };
-        }
-
-
-        // --- 1. РЕГИСТРАЦИЯ + ШИФРОВАНИЕ ---
-        async function enrollAndEncrypt() {
-            clearLog();
-            const secret = document.getElementById('secretInput').value;
-            if (!secret) return alert('Введите данные!');
-
-            try {
-                log("1. Создаем новую пару ключей в биометрическом модуле...");
-                
-                // Шаг A: Создаем Credential (Регистрация пальца)
-                // Нам нужно включить PRF при создании
-                const createOptions = {
-                    publicKey: {
-                        challenge: window.crypto.getRandomValues(new Uint8Array(32)),
-                        rp: { name: "BioCipher PRF", id: location.hostname },
-                        user: { 
-                            id: window.crypto.getRandomValues(new Uint8Array(16)), 
-                            name: "user@prf", 
-                            displayName: "PRF User" 
-                        },
-                        pubKeyCredParams: [{ alg: -7, type: "public-key" }],
-                        authenticatorSelection: { userVerification: "required", authenticatorAttachment: "platform" },
-                        timeout: 60000,
-                        // Включаем PRF расширение
-                        extensions: { prf: {} }
-                    }
-                };
-
-                const newCred = await navigator.credentials.create(createOptions);
-                const credId = new Uint8Array(newCred.rawId);
-                
-                log("2. Биометрия привязана. Теперь генерируем аппаратный ключ шифрования...");
-                
-                // Шаг B: Генерируем случайную соль для этого файла
-                const fileSalt = window.crypto.getRandomValues(new Uint8Array(32));
-
-                // Шаг C: Сразу же просим чип вычислить ключ для этой соли.
-                // (Иногда можно получить сразу при create, но надежнее вызвать get)
-                const { key: hardwareKey } = await getHardwareKey(credId, fileSalt);
-
-                log("3. Ключ получен из чипа (в памяти). Шифруем данные...");
-
-                // Шаг D: Шифруем данные этим ключом
-                const iv = window.crypto.getRandomValues(new Uint8Array(12));
-                const encodedData = new TextEncoder().encode(secret);
-                const encryptedData = await window.crypto.subtle.encrypt(
-                    { name: "AES-GCM", iv: iv },
-                    hardwareKey,
-                    encodedData
-                );
-
-                // Шаг E: Сохраняем. 
-                // ВАЖНО: Мы НЕ сохраняем сам Key. Мы сохраняем CredentialID и Salt.
-                // Без пальца Salt бесполезна.
-                const dbRecord = {
-                    ciphertext: arrayBufferToBase64(encryptedData),
-                    iv: arrayBufferToBase64(iv),
-                    salt: arrayBufferToBase64(fileSalt),
-                    credId: arrayBufferToBase64(credId)
-                };
-
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(dbRecord));
-                document.getElementById('secretInput').value = "";
-                
-                log("УСПЕХ! В LocalStorage сохранены только:\n1. Шифр\n2. Соль\n3. ID пальца\nКЛЮЧ НЕ СОХРАНЕН!");
+                logMsg("Все данные зашифрованы и сохранены в IndexedDB.");
+                alert("Успешно! Теперь обновите страницу.");
 
             } catch (e) {
-                log("ОШИБКА: " + e.message);
+                logMsg("ОШИБКА: " + e.message);
                 console.error(e);
             }
-        }
+        };
 
-        // --- 2. РАСШИФРОВКА ---
-        async function decryptWithHardwareKey() {
-            clearLog();
-            const recordStr = localStorage.getItem(STORAGE_KEY);
-            if (!recordStr) return log("Нет данных.");
-            const record = JSON.parse(recordStr);
-
+        // --- 2. АВТОРИЗАЦИЯ И ЧТЕНИЕ ---
+        document.getElementById('btn-load').onclick = async () => {
             try {
-                log("1. Читаем соль из базы. Запрашиваем ключ у чипа...");
+                const record = await getFromDB();
+                if (!record) return alert("Запись не найдена в базе. Сначала зарегистрируйтесь.");
+
+                logMsg("Запрос биометрии (чтение)...");
+
+                const challenge = crypto.getRandomValues(new Uint8Array(32));
+                const assertion = await navigator.credentials.get({
+                    publicKey: {
+                        challenge,
+                        allowCredentials: [{
+                            id: record.credentialId,
+                            type: 'public-key'
+                        }],
+                        userVerification: "required",
+                        extensions: {
+                            prf: { eval: { first: PRF_SALT } }
+                        }
+                    }
+                });
+
+                const extensionResults = assertion.getClientExtensionResults();
+                const prfKeyRaw = new Uint8Array(extensionResults.prf.results.eval.first);
                 
-                // Восстанавливаем буферы
-                const salt = base64ToArrayBuffer(record.salt);
-                const credId = base64ToArrayBuffer(record.credId);
-                const iv = base64ToArrayBuffer(record.iv);
-                const ciphertext = base64ToArrayBuffer(record.ciphertext);
+                logMsg("Ключ успешно извлечен из биометрии.");
 
-                // Самый важный момент: Мы отдаем Соль + Палец -> Получаем Ключ
-                const { key: hardwareKey } = await getHardwareKey(credId, salt);
+                // Расшифровываем
+                const decryptedText = await decryptData(prfKeyRaw, record.iv, record.ciphertext);
+                const result = JSON.parse(decryptedText);
 
-                log("2. Чип вернул ключ. Пробуем расшифровать...");
-
-                const decryptedBuffer = await window.crypto.subtle.decrypt(
-                    { name: "AES-GCM", iv: iv },
-                    hardwareKey,
-                    ciphertext
-                );
-
-                const result = new TextDecoder().decode(decryptedBuffer);
-                document.getElementById('secretInput').value = result;
-                log("УСПЕХ! Данные расшифрованы.");
+                logMsg("--- УСПЕХ ---");
+                logMsg("Мастер-пароль: " + result.master);
+                logMsg("Данные: " + result.data);
+                
+                alert(`Расшифровано!\nПароль: ${result.master}\nДанные: ${result.data}`);
 
             } catch (e) {
-                log("ОШИБКА: " + e.message);
-                if (e.name === "OperationError") {
-                    log("Вероятно, чип вернул неверный ключ (другой палец?) или данные повреждены.");
-                }
+                logMsg("ОШИБКА: " + e.message);
+                console.error(e);
             }
-        }
+        };
 
-        function clearAll() {
-            localStorage.clear();
-            document.getElementById('secretInput').value = "";
-            clearLog();
-            log("База очищена.");
-        }
-
-        // --- Helpers ---
-        function arrayBufferToBase64(buffer) {
-            let binary = '';
-            const bytes = new Uint8Array(buffer);
-            for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
-            return window.btoa(binary);
-        }
-
-        function base64ToArrayBuffer(base64) {
-            const binary_string = window.atob(base64);
-            const len = binary_string.length;
-            const bytes = new Uint8Array(len);
-            for (let i = 0; i < len; i++) bytes[i] = binary_string.charCodeAt(i);
-            return bytes.buffer;
-        }
+        checkSupport();
     </script>
 </body>
 </html>
