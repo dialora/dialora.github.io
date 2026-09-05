@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DevTools Online</title>
+    <script src="tailwindcss.js"></script>
+    <!-- Библиотека иконок -->
+    <script src="lucide.min.js"></script>
+    <!-- Локальная генерация QR-кодов -->
+    <script src="qrcode.min.js"></script>
+    
+    <style>
+        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #f3f4f6; color: #1f2937; }
+        
+        /* Логика вкладок - !important для переопределения утилит Tailwind (flex) */
+        .tab-content { display: none !important; animation: fadeIn 0.2s ease-in-out; }
+        .tab-content.active { display: block !important; }
+        #json-content.active { display: flex !important; } 
+        
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        
+        /* Стили для интерактивного дерева JSON */
+        .json-node.collapsed > .json-children { display: none; }
+        .json-node.collapsed > .json-collapsed-text { display: inline-block !important; }
+        .json-node.collapsed > .json-toggle { transform: rotate(-90deg); }
+        .json-toggle { transition: transform 0.1s ease; }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-8 flex items-center justify-center">
+
+    <div class="max-w-5xl w-full bg-white rounded-2xl shadow-xl overflow-hidden flex flex-col md:flex-row border border-gray-200">
+        
+        <!-- Боковая панель (Навигация) -->
+        <div class="w-full md:w-64 bg-gray-50 border-b md:border-b-0 md:border-r border-gray-200 p-4 shrink-0">
+            <div class="font-black text-xl mb-6 text-gray-900 tracking-tight px-2 flex items-center gap-2">
+                <span class="bg-gray-900 text-white w-8 h-8 rounded flex items-center justify-center text-sm">&lt;/&gt;</span>
+                DevTools
+            </div>
+            <nav class="flex md:flex-col gap-2 overflow-x-auto pb-2 md:pb-0 scrollbar-hide" id="tabs-nav">
+                <button data-target="aes-content" class="tab-btn active flex items-center gap-3 px-4 py-3 rounded-xl text-left whitespace-nowrap transition-all duration-200 bg-indigo-50 border-indigo-200 text-indigo-600 border shadow-sm font-semibold">
+                    <i data-lucide="shield" class="w-4 h-4"></i><span>AES Шифратор</span>
+                </button>
+                <button data-target="pass-content" class="tab-btn flex items-center gap-3 px-4 py-3 rounded-xl text-left whitespace-nowrap transition-all duration-200 text-gray-600 hover:bg-gray-200 border border-transparent">
+                    <i data-lucide="key" class="w-4 h-4 text-amber-500"></i><span class="hover-color-amber">Генератор паролей</span>
+                </button>
+                <button data-target="json-content" class="tab-btn flex items-center gap-3 px-4 py-3 rounded-xl text-left whitespace-nowrap transition-all duration-200 text-gray-600 hover:bg-gray-200 border border-transparent">
+                    <i data-lucide="file-json" class="w-4 h-4 text-blue-500"></i><span class="hover-color-blue">JSON Formatter</span>
+                </button>
+                <button data-target="qr-content" class="tab-btn flex items-center gap-3 px-4 py-3 rounded-xl text-left whitespace-nowrap transition-all duration-200 text-gray-600 hover:bg-gray-200 border border-transparent">
+                    <i data-lucide="qr-code" class="w-4 h-4 text-rose-500"></i><span class="hover-color-rose">QR Коды</span>
+                </button>
+            </nav>
+        </div>
+
+        <!-- Основная область контента -->
+        <div class="flex-1 p-6 md:p-8 min-h-[600px] bg-white w-full">
+            
+            <!-- 1. AES Инструмент -->
+            <div id="aes-content" class="tab-content active space-y-4">
+                <h2 class="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                    <i data-lucide="shield" class="text-indigo-600"></i> AES-GCM Шифрование
+                </h2>
+                <p class="text-gray-500 text-sm">Надежное шифрование текста на стороне клиента (Web Crypto API).</p>
+                
+                <textarea id="aes-text" placeholder="Введите текст для шифрования или Base64 строку для расшифрования..." class="w-full h-32 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none resize-y"></textarea>
+                <input type="password" id="aes-pass" placeholder="Секретный пароль" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+                
+                <div class="flex gap-3">
+                    <button onclick="handleAes('encrypt')" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white p-3 rounded-lg font-medium flex items-center justify-center gap-2">
+                        <i data-lucide="lock" class="w-4 h-4"></i> Зашифровать
+                    </button>
+                    <button onclick="handleAes('decrypt')" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white p-3 rounded-lg font-medium flex items-center justify-center gap-2">
+                        <i data-lucide="unlock" class="w-4 h-4"></i> Расшифровать
+                    </button>
+                </div>
+                
+                <div id="aes-error" class="text-red-500 text-sm hidden items-center gap-1 mt-2">
+                    <i data-lucide="alert-circle" class="w-4 h-4"></i> <span></span>
+                </div>
+                
+                <div id="aes-result-box" class="mt-4 p-4 bg-gray-50 border border-gray-200 rounded-lg relative hidden">
+                    <div class="text-xs text-gray-500 mb-1 uppercase font-semibold tracking-wider">Результат:</div>
+                    <p id="aes-result" class="break-all font-mono text-sm text-gray-800"></p>
+                    <button onclick="copyText('aes-result')" class="absolute right-2 top-2 p-2 bg-white border border-gray-200 hover:bg-gray-100 rounded text-gray-600">
+                        <i data-lucide="copy" class="w-4 h-4"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 2. Генератор паролей -->
+            <div id="pass-content" class="tab-content space-y-6">
+                <div>
+                    <h2 class="text-2xl font-bold text-gray-800 flex items-center gap-2 mb-2">
+                        <i data-lucide="key" class="text-amber-500"></i> Мастер Паролей
+                    </h2>
+                    <p class="text-gray-500 text-sm">Генерирует надежный пароль детерминированно. Один и тот же Мастер + Цель всегда дадут одинаковый результат.</p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Цель (например: google.com)</label>
+                        <input type="text" id="pass-target" class="w-full p-2 border border-gray-300 rounded-lg outline-none focus:border-amber-500" placeholder="google">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Мастер пароль</label>
+                        <input type="password" id="pass-master" class="w-full p-2 border border-gray-300 rounded-lg outline-none focus:border-amber-500" placeholder="mYS3cR3TP@Ss">
+                    </div>
+                </div>
+
+                <div class="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                    <div class="mb-4">
+                        <label class="flex justify-between text-sm font-medium text-gray-700 mb-2">
+                            <span>Длина пароля:</span>
+                            <span id="pass-length-val" class="font-bold text-amber-600">16</span>
+                        </label>
+                        <input type="range" id="pass-length" min="4" max="64" value="16" class="w-full accent-amber-500">
+                    </div>
+                    
+                    <div class="flex flex-wrap gap-4">
+                        <label class="flex items-center gap-2 cursor-pointer select-none">
+                            <input type="checkbox" id="opt-upper" checked class="w-4 h-4 text-amber-600 rounded border-gray-300 focus:ring-amber-500">
+                            <span class="text-sm font-medium text-gray-700">A-Z</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer select-none">
+                            <input type="checkbox" id="opt-lower" checked class="w-4 h-4 text-amber-600 rounded border-gray-300 focus:ring-amber-500">
+                            <span class="text-sm font-medium text-gray-700">a-z</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer select-none">
+                            <input type="checkbox" id="opt-numbers" checked class="w-4 h-4 text-amber-600 rounded border-gray-300 focus:ring-amber-500">
+                            <span class="text-sm font-medium text-gray-700">0-9</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer select-none">
+                            <input type="checkbox" id="opt-symbols" checked class="w-4 h-4 text-amber-600 rounded border-gray-300 focus:ring-amber-500">
+                            <span class="text-sm font-medium text-gray-700">!@#</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="relative">
+                    <input type="text" id="pass-result" readonly placeholder="Сгенерированный пароль появится здесь" class="w-full p-4 pr-12 text-lg font-mono bg-white border-2 border-amber-200 rounded-lg outline-none text-gray-800">
+                    <button onclick="copyInput('pass-result')" class="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-white border border-gray-200 hover:bg-gray-100 rounded text-gray-600">
+                        <i data-lucide="copy" class="w-4 h-4"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 3. JSON Formatter -->
+            <div id="json-content" class="tab-content flex-col h-full space-y-4">
+                <h2 class="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                    <i data-lucide="file-json" class="text-blue-500"></i> JSON Форматтер
+                </h2>
+                <p class="text-gray-500 text-sm">Вставьте JSON для валидации и отображения в виде сворачиваемого дерева.</p>
+                
+                <div class="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-4 min-h-[400px]">
+                    <textarea id="json-input" placeholder="Вставьте неформатированный JSON сюда..." class="w-full h-full min-h-[300px] p-3 border border-gray-300 focus:border-blue-500 font-mono text-sm rounded-lg outline-none resize-none transition-colors">{"название": "DevTools Online", "инструменты": ["AES", "Пароли", "JSON", "QR"], "активен": true, "версия": 1.0}</textarea>
+                    
+                    <div class="bg-gray-50 border border-gray-200 rounded-lg p-4 overflow-auto min-h-[300px] max-h-[600px]">
+                        <div id="json-error" class="hidden text-red-500 flex gap-2">
+                            <i data-lucide="alert-circle" class="w-5 h-5 shrink-0"></i>
+                            <div class="font-mono text-sm"></div>
+                        </div>
+                        <div id="json-output"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4. QR Генератор -->
+            <div id="qr-content" class="tab-content space-y-6">
+                <div>
+                    <h2 class="text-2xl font-bold text-gray-800 flex items-center gap-2 mb-2">
+                        <i data-lucide="qr-code" class="text-rose-500"></i> QR Генератор (Оффлайн)
+                    </h2>
+                    <p class="text-gray-500 text-sm">Мгновенное создание QR-кодов. Генерация происходит 100% в браузере.</p>
+                </div>
+
+                <textarea id="qr-input" placeholder="Введите текст, ссылку или данные для кодирования..." class="w-full h-32 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 outline-none resize-y"></textarea>
+                
+                <div class="flex flex-col items-center justify-center p-8 bg-gray-50 border border-dashed border-gray-300 rounded-lg min-h-[350px]">
+                    
+                    <div id="qr-container-wrapper" class="hidden flex flex-col items-center gap-6">
+                        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center justify-center min-w-[280px] min-h-[280px]">
+                            <div id="qr-output"></div>
+                        </div>
+                        <p class="text-sm text-gray-400">QR-код сгенерирован безопасно и локально</p>
+                    </div>
+
+                    <div id="qr-placeholder" class="text-gray-400 flex flex-col items-center gap-3">
+                        <i data-lucide="qr-code" class="w-12 h-12 opacity-20"></i>
+                        <p>Впишите текст, чтобы сгенерировать знак</p>
+                    </div>
+                </div>
+            </div>
+            
+        </div>
+    </div>
+
+    <script>
+        // Инициализация иконок Lucide
+        lucide.createIcons();
+
+        // --- ЛОГИКА ВКЛАДОК ---
+        const tabs = document.querySelectorAll('.tab-btn');
+        const contents = document.querySelectorAll('.tab-content');
+
+        const tabStyles = {
+            'aes-content': { bg: 'bg-indigo-50 border-indigo-200', text: 'text-indigo-600' },
+            'pass-content': { bg: 'bg-amber-50 border-amber-200', text: 'text-amber-600' },
+            'json-content': { bg: 'bg-blue-50 border-blue-200', text: 'text-blue-600' },
+            'qr-content': { bg: 'bg-rose-50 border-rose-200', text: 'text-rose-600' }
+        };
+
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                const targetId = tab.getAttribute('data-target');
+                
+                // Сброс всех вкладок
+                tabs.forEach(t => {
+                    t.className = 'tab-btn flex items-center gap-3 px-4 py-3 rounded-xl text-left whitespace-nowrap transition-all duration-200 text-gray-600 hover:bg-gray-200 border border-transparent';
+                });
+                contents.forEach(c => c.classList.remove('active'));
+                
+                // Активация выбранной вкладки
+                tab.className = `tab-btn active flex items-center gap-3 px-4 py-3 rounded-xl text-left whitespace-nowrap transition-all duration-200 border shadow-sm font-semibold ${tabStyles[targetId].bg} ${tabStyles[targetId].text}`;
+            document.getElementById(targetId).classList.add('active');
+        });
+    });
+
+    // --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
+    function fallbackCopy(text) {
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        // Избегаем прокрутки страницы при фокусе
+        textArea.style.position = "fixed";
+        textArea.style.top = "0";
+        textArea.style.left = "0";
+        textArea.style.opacity = "0";
+        document.body.appendChild(textArea);
+        
+        textArea.focus();
+        textArea.select();
+        
+        try {
+            document.execCommand('copy');
+            showToast('Скопировано!');
+        } catch (err) {
+            showToast('Ошибка копирования!');
+            console.error('Fallback copy failed', err);
+        }
+        
+        document.body.removeChild(textArea);
+    }
+
+    function copyText(id) {
+        const text = document.getElementById(id).innerText;
+        fallbackCopy(text);
+    }
+    
+    function copyInput(id) {
+        const text = document.getElementById(id).value;
+        if(text) {
+            fallbackCopy(text);
+        }
+    }
+    
+    function showToast(msg) {
+        // Простая замена alert (Custom modal UI)
+            const toast = document.createElement('div');
+            toast.className = 'fixed bottom-4 right-4 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg text-sm z-50 animate-bounce';
+            toast.innerText = msg;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 2000);
+        }
+
+        // --- 1. AES ШИФРОВАНИЕ (Web Crypto API) ---
+        const bufferToBase64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
+        const base64ToBuffer = (b64) => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+
+        async function getAesKey(password, salt) {
+            const enc = new TextEncoder();
+            const keyMaterial = await window.crypto.subtle.importKey("raw", enc.encode(password), { name: "PBKDF2" }, false, ["deriveKey"]);
+            return window.crypto.subtle.deriveKey(
+                { name: "PBKDF2", salt: salt, iterations: 100000, hash: "SHA-256" },
+                keyMaterial, { name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]
+            );
+        }
+
+        async function handleAes(action) {
+            const text = document.getElementById('aes-text').value;
+            const password = document.getElementById('aes-pass').value;
+            const errorBox = document.getElementById('aes-error');
+            const resultBox = document.getElementById('aes-result-box');
+            const resultText = document.getElementById('aes-result');
+            
+            errorBox.classList.add('hidden');
+            resultBox.classList.add('hidden');
+
+            try {
+                if (!text || !password) throw new Error('Введите текст и пароль');
+
+                if (action === 'encrypt') {
+                    const salt = window.crypto.getRandomValues(new Uint8Array(16));
+                    const iv = window.crypto.getRandomValues(new Uint8Array(12));
+                    const key = await getAesKey(password, salt);
+                    
+                    const encText = new TextEncoder().encode(text);
+                    const ciphertext = await window.crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, encText);
+                    
+                    const combined = new Uint8Array(16 + 12 + ciphertext.byteLength);
+                    combined.set(salt, 0); combined.set(iv, 16); combined.set(new Uint8Array(ciphertext), 28);
+                    
+                    resultText.innerText = bufferToBase64(combined);
+                    resultBox.classList.remove('hidden');
+                } else {
+                    const combined = base64ToBuffer(text);
+                    if (combined.length < 28) throw new Error('Неверный формат');
+                    
+                    const salt = combined.slice(0, 16);
+                    const iv = combined.slice(16, 28);
+                    const ciphertext = combined.slice(28);
+                    
+                    const key = await getAesKey(password, salt);
+                    const decrypted = await window.crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ciphertext);
+                    
+                    resultText.innerText = new TextDecoder().decode(decrypted);
+                    resultBox.classList.remove('hidden');
+                }
+            } catch (err) {
+                errorBox.querySelector('span').innerText = err.message || 'Ошибка расшифровки (неверный пароль?)';
+                errorBox.classList.remove('hidden');
+                errorBox.classList.add('flex');
+            }
+        }
+
+        // --- 2. ГЕНЕРАТОР ПАРОЛЕЙ ---
+        const mulberry32 = (a) => function() {
+            var t = a += 0x6D2B79F5;
+            t = Math.imul(t ^ t >>> 15, t | 1);
+            t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+            return ((t ^ t >>> 14) >>> 0) / 4294967296;
+        };
+
+        function generatePassword() {
+            const target = document.getElementById('pass-target').value;
+            const master = document.getElementById('pass-master').value;
+            const length = parseInt(document.getElementById('pass-length').value);
+            document.getElementById('pass-length-val').innerText = length;
+
+            const opts = {
+                upper: document.getElementById('opt-upper').checked,
+                lower: document.getElementById('opt-lower').checked,
+                numbers: document.getElementById('opt-numbers').checked,
+                symbols: document.getElementById('opt-symbols').checked
+            };
+
+            const resultInput = document.getElementById('pass-result');
+
+            if (!target || !master || (!opts.upper && !opts.lower && !opts.numbers && !opts.symbols)) {
+                resultInput.value = '';
+                return;
+            }
+
+            const enc = new TextEncoder();
+            window.crypto.subtle.digest('SHA-256', enc.encode(master + "||" + target)).then(hashBuffer => {
+                const prng = mulberry32(new Uint32Array(hashBuffer)[0]);
+                let charset = "", mandatory = [];
+                
+                if (opts.upper) { charset += "ABCDEFGHIJKLMNOPQRSTUVWXYZ"; mandatory.push("ABCDEFGHIJKLMNOPQRSTUVWXYZ"); }
+                if (opts.lower) { charset += "abcdefghijklmnopqrstuvwxyz"; mandatory.push("abcdefghijklmnopqrstuvwxyz"); }
+                if (opts.numbers) { charset += "0123456789"; mandatory.push("0123456789"); }
+                if (opts.symbols) { charset += "!@#$%^&*()_+~`|}{[]:;?><,./-="; mandatory.push("!@#$%^&*()_+~`|}{[]:;?><,./-="); }
+
+                let result = [];
+                for (let chars of mandatory) {
+                    if (result.length < length) result.push(chars[Math.floor(prng() * chars.length)]);
+                }
+                while (result.length < length) {
+                    result.push(charset[Math.floor(prng() * charset.length)]);
+                }
+                for (let i = result.length - 1; i > 0; i--) {
+                    const j = Math.floor(prng() * (i + 1));
+                    [result[i], result[j]] = [result[j], result[i]];
+                }
+                resultInput.value = result.join("").substring(0, length);
+            });
+        }
+
+        ['pass-target', 'pass-master', 'pass-length', 'opt-upper', 'opt-lower', 'opt-numbers', 'opt-symbols'].forEach(id => {
+            document.getElementById(id).addEventListener('input', generatePassword);
+        });
+
+        // --- 3. JSON FORMATTER ---
+        const jsonInput = document.getElementById('json-input');
+        const jsonOutput = document.getElementById('json-output');
+        const jsonError = document.getElementById('json-error');
+
+        // Рекурсивное создание HTML узлов JSON
+        function createJsonNodeHtml(key, value, isLast, level = 0) {
+            const isObject = value !== null && typeof value === 'object';
+            const isArray = Array.isArray(value);
+            
+            // Отступы для вложенности
+            let html = `<div class="json-node font-mono text-sm py-0.5" style="padding-left: ${level === 0 ? 0 : 20}px;">`;
+            
+            if (key !== null) {
+                // Экранируем ключ
+                const safeKey = String(key).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                html += `<span class="text-purple-600 font-medium">"${safeKey}"</span><span class="text-gray-400 mr-1">:</span>`;
+            }
+
+            if (isObject) {
+                const keys = Object.keys(value);
+                const brackets = isArray ? ['[', ']'] : ['{', '}'];
+                
+                if (keys.length === 0) {
+                    html += `<span class="text-gray-600">${brackets[0]}${brackets[1]}</span>${!isLast ? '<span class="text-gray-400">,</span>' : ''}</div>`;
+                    return html;
+                }
+
+                // Интерактивные элементы для сворачивания
+                html += `<span class="json-toggle inline-block cursor-pointer text-gray-400 hover:text-gray-700 select-none font-bold mr-1" style="font-size: 10px; transform: translateY(-1px);">▼</span>`;
+                html += `<span class="text-gray-600">${brackets[0]}</span>`;
+                html += `<span class="json-collapsed-text hidden text-gray-400 italic text-xs mx-2 cursor-pointer hover:text-gray-600 bg-gray-100 px-1 rounded">${keys.length} ${isArray ? 'items' : 'keys'}</span>`;
+                
+                // Дочерние элементы (рекурсия)
+                html += `<div class="json-children border-l border-dashed border-gray-200 ml-1.5">`;
+                keys.forEach((k, i) => {
+                    html += createJsonNodeHtml(isArray ? null : k, value[k], i === keys.length - 1, level + 1);
+                });
+                html += `</div>`;
+                
+                html += `<span class="text-gray-600" style="padding-left: ${level === 0 && key===null ? 0 : 2}px;">${brackets[1]}</span>${!isLast ? '<span class="text-gray-400">,</span>' : ''}`;
+            } else {
+                // Примитивы
+                let valStr = '';
+                let valClass = '';
+                if (typeof value === 'string') {
+                    const safeVal = value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    valStr = `"${safeVal}"`;
+                    valClass = 'text-green-600';
+                } else if (typeof value === 'number') {
+                    valStr = value;
+                    valClass = 'text-blue-500';
+                } else if (typeof value === 'boolean') {
+                    valStr = value;
+                    valClass = 'text-orange-500 font-bold';
+                } else if (value === null) {
+                    valStr = 'null';
+                    valClass = 'text-gray-500';
+                }
+                html += `<span class="${valClass} break-all">${valStr}</span>${!isLast ? '<span class="text-gray-400">,</span>' : ''}`;
+            }
+            
+            html += '</div>';
+            return html;
+        }
+
+        function formatJson() {
+            const val = jsonInput.value;
+            if (!val.trim()) {
+                jsonOutput.innerHTML = '<div class="text-gray-400 text-center mt-10">Ожидание ввода JSON...</div>';
+                jsonError.classList.add('hidden');
+                jsonInput.classList.remove('border-red-400', 'focus:border-red-500');
+                return;
+            }
+
+            try {
+                const parsed = JSON.parse(val);
+                jsonError.classList.add('hidden');
+                jsonInput.classList.remove('border-red-400', 'focus:border-red-500');
+                jsonOutput.innerHTML = createJsonNodeHtml(null, parsed, true);
+            } catch (e) {
+                jsonError.querySelector('div').innerText = e.message;
+                jsonError.classList.remove('hidden');
+                jsonInput.classList.add('border-red-400', 'focus:border-red-500');
+                jsonOutput.innerHTML = '';
+            }
+        }
+
+        jsonInput.addEventListener('input', formatJson);
+        formatJson(); // Первый рендер при загрузке
+
+        // Делегирование событий клика для сворачивания/разворачивания узлов дерева
+        jsonOutput.addEventListener('click', function(e) {
+            if (e.target.classList.contains('json-toggle') || e.target.classList.contains('json-collapsed-text')) {
+                // Находим ближайшего родителя (конкретный узел)
+                const node = e.target.closest('.json-node');
+                if (node) {
+                    node.classList.toggle('collapsed');
+                }
+            }
+        });
+
+        // --- 4. QR ГЕНЕРАТОР (Оффлайн qrcode.js) ---
+        const qrInput = document.getElementById('qr-input');
+        const qrContainerWrapper = document.getElementById('qr-container-wrapper');
+        const qrPlaceholder = document.getElementById('qr-placeholder');
+        const qrOutput = document.getElementById('qr-output');
+        let currentQr = null;
+
+        qrInput.addEventListener('input', (e) => {
+            const text = e.target.value.trim();
+            if (text) {
+                qrPlaceholder.style.display = 'none';
+                qrContainerWrapper.style.display = 'flex';
+                qrOutput.innerHTML = ''; // Очищаем прошлый код
+                
+                if (window.QRCode) {
+                    currentQr = new QRCode(qrOutput, {
+                        text: text,
+                        width: 250,
+                        height: 250,
+                        colorDark : "#1f2937",
+                        colorLight : "#ffffff",
+                        correctLevel : QRCode.CorrectLevel.H
+                    });
+                }
+            } else {
+                qrPlaceholder.style.display = 'flex';
+                qrContainerWrapper.style.display = 'none';
+            }
+        });
+        
+    </script>
+</body>
+</html>
