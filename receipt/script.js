@@ -103,23 +103,47 @@ const packedTopPaths = [
 
 const PACK_COLUMNS = 10;
 
+// Состояние приложения
+let currentJsonData = null;
+let isJsonView = false;
+
 const statusEl = document.getElementById("status");
 const contentEl = document.getElementById("content");
 const jsonMenu = document.getElementById("jsonMenu");
 const menuButtons = jsonMenu.querySelectorAll("button");
+const paperEl = document.getElementById("paper");
+const jsonTreeEl = document.getElementById("jsonTree");
+const toggleViewButton = document.getElementById("toggleViewButton");
 
 document.getElementById("printButton").addEventListener("click", () => window.print());
 
-// Функция для загрузки нужного JSON файла
+// Переключение вида Чек / JSON
+toggleViewButton.addEventListener("click", () => {
+  isJsonView = !isJsonView;
+  
+  if (isJsonView) {
+    toggleViewButton.textContent = "Вид: Чек";
+    paperEl.classList.add("hidden");
+    jsonTreeEl.classList.remove("hidden");
+    
+    if (currentJsonData) {
+      jsonTreeEl.textContent = JSON.stringify(currentJsonData, null, 2);
+    }
+  } else {
+    toggleViewButton.textContent = "Вид: JSON";
+    jsonTreeEl.classList.add("hidden");
+    paperEl.classList.remove("hidden");
+  }
+});
+
 function loadJsonFile(fileName, activeButtonElement) {
-  // Выделяем активную кнопку
   menuButtons.forEach(btn => btn.classList.remove('active'));
   if (activeButtonElement) {
     activeButtonElement.classList.add('active');
   }
 
   statusEl.textContent = `Загрузка файла ${fileName}...`;
-  contentEl.innerHTML = ""; // Очищаем старый контент
+  contentEl.innerHTML = ""; 
   
   fetch(`./json/${fileName}`, { cache: "no-store" })
     .then((response) => {
@@ -133,7 +157,6 @@ function loadJsonFile(fileName, activeButtonElement) {
     });
 }
 
-// Привязываем события к кнопкам
 menuButtons.forEach(btn => {
   btn.addEventListener("click", (e) => {
     const fileName = e.target.getAttribute("data-file");
@@ -141,7 +164,6 @@ menuButtons.forEach(btn => {
   });
 });
 
-// Загружаем первый чек по умолчанию при открытии страницы
 if (menuButtons.length > 0) {
   const firstBtn = menuButtons[0];
   loadJsonFile(firstBtn.getAttribute("data-file"), firstBtn);
@@ -151,7 +173,16 @@ function renderText(text, sourceName) {
   try {
     const data = JSON.parse(text);
     const fixed = deepFixText(data);
+    
+    currentJsonData = fixed; // Сохраняем для дерева
+
     renderReceipt(fixed);
+
+    // Если сейчас открыт режим JSON, сразу обновляем его текст
+    if (isJsonView) {
+      jsonTreeEl.textContent = JSON.stringify(currentJsonData, null, 2);
+    }
+
     statusEl.textContent = `Успешно загружен: ${sourceName}`;
   } catch (error) {
     statusEl.textContent = `Ошибка чтения: ${error.message}`;
@@ -220,24 +251,6 @@ function renderItemsTable(items) {
   });
 
   return list;
-}
-
-function renderKeyValueTable(rows) {
-  const table = document.createElement("table");
-  const tbody = document.createElement("tbody");
-  rows.forEach(({ label, value, key }) => {
-    const tr = document.createElement("tr");
-    const keyTd = document.createElement("td");
-    keyTd.className = "kv-key";
-    keyTd.textContent = label;
-    const valueTd = document.createElement("td");
-    valueTd.className = "kv-value";
-    valueTd.textContent = formatValue(value, key);
-    tr.append(keyTd, valueTd);
-    tbody.append(tr);
-  });
-  table.append(tbody);
-  return table;
 }
 
 function renderValue(value, path) {
