@@ -10,7 +10,9 @@
     <div class="toolbar">
       <button type="button" id="printButton">Печать</button>
       
-      <!-- Новое меню для переключения между JSON-файлами -->
+      <!-- Новая кнопка для переключения вида -->
+      <button type="button" id="toggleViewButton">Вид: JSON</button>
+      
       <div class="menu" id="jsonMenu">
         <button type="button" data-file="1.json">Чек 1</button>
         <button type="button" data-file="2.json">Чек 2</button>
@@ -23,6 +25,7 @@
     </div>
 
     <main class="page-wrap">
+      <!-- Контейнер с визуальным чеком -->
       <article class="paper" id="paper">
         <header>
           <div>
@@ -31,6 +34,9 @@
         </header>
         <div id="content"></div>
       </article>
+
+      <!-- Новый контейнер для отображения JSON дерева (по умолчанию скрыт) -->
+      <pre class="json-paper hidden" id="jsonTree"></pre>
     </main>
 
     <script src="./script.js"></script>
