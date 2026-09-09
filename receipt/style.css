@@ -58,11 +58,22 @@ body {
   background: var(--soft);
 }
 
-/* Стили для активной кнопки в меню */
-.toolbar .menu button.active {
+.toolbar button.active {
   background: var(--accent);
   color: #fff;
   border-color: var(--accent);
+}
+
+#toggleViewButton {
+  background: #eaf2fb;
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: bold;
+}
+
+#toggleViewButton:hover {
+  background: var(--accent);
+  color: #fff;
 }
 
 .status {
@@ -83,6 +94,22 @@ body {
   padding: var(--paper-padding);
   background: #fff;
   box-shadow: 0 18px 45px rgba(31, 41, 55, 0.22);
+}
+
+/* Стили для контейнера с JSON */
+.json-paper {
+  width: var(--paper-width);
+  margin: 0 auto;
+  padding: var(--paper-padding);
+  background: #2d2d2d;
+  color: #e6e6e6;
+  box-shadow: 0 18px 45px rgba(31, 41, 55, 0.22);
+  font-family: Consolas, Monaco, "Courier New", monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  border-radius: 4px;
 }
 
 header {
@@ -246,7 +273,7 @@ th {
 }
 
 .hidden {
-  display: none;
+  display: none !important;
 }
 
 @media print {
@@ -264,10 +291,14 @@ th {
     padding: 0;
     overflow: visible;
   }
-  .paper {
+  .paper, .json-paper {
     width: 210mm;
     min-height: 0;
     margin: 0;
     box-shadow: none;
+  }
+  .json-paper {
+    color: #000;
+    background: #fff;
   }
 }
