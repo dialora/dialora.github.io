@@ -1,0 +1,273 @@
+:root {
+  --paper-width: 210mm;
+  --paper-padding: 10mm;
+  --line: #cfd5dd;
+  --line-strong: #9aa6b2;
+  --text: #18202a;
+  --muted: #5a6472;
+  --soft: #f4f6f8;
+  --accent: #205ea8;
+  --accent-soft: #eaf2fb;
+  --warn: #fff7df;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: #d8dde3;
+  color: var(--text);
+  font: 11px/1.35 Arial, Helvetica, sans-serif;
+}
+
+.toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  gap: 15px;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 14px;
+  background: rgba(248, 250, 252, 0.94);
+  border-bottom: 1px solid var(--line);
+  backdrop-filter: blur(8px);
+}
+
+.menu {
+  display: flex;
+  gap: 5px;
+}
+
+.toolbar button,
+.toolbar label {
+  border: 1px solid var(--line-strong);
+  background: #fff;
+  color: var(--text);
+  border-radius: 6px;
+  padding: 7px 10px;
+  font: 12px/1 Arial, Helvetica, sans-serif;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.toolbar button:hover {
+  background: var(--soft);
+}
+
+/* Стили для активной кнопки в меню */
+.toolbar .menu button.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.status {
+  max-width: 420px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.page-wrap {
+  padding: 18px 0 36px;
+  overflow-x: auto;
+}
+
+.paper {
+  width: var(--paper-width);
+  min-height: 297mm;
+  margin: 0 auto;
+  padding: var(--paper-padding);
+  background: #fff;
+  box-shadow: 0 18px 45px rgba(31, 41, 55, 0.22);
+}
+
+header {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px 16px;
+  align-items: end;
+  padding-bottom: 7px;
+  border-bottom: 2px solid var(--text);
+  margin-bottom: 8px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.1;
+  letter-spacing: 0;
+}
+
+.subtitle {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.section-title {
+  margin: 10px 0 4px;
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+th, td {
+  border: 1px solid var(--line);
+  padding: 3px 4px;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+th {
+  background: var(--soft);
+  color: #1f2937;
+  font-weight: 700;
+  text-align: left;
+}
+
+.kv-key {
+  width: 31%;
+  background: var(--soft);
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.kv-value {
+  background: #fff;
+}
+
+.stack-key {
+  background: var(--soft);
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.stack-value {
+  min-height: 20px;
+  background: #fff;
+}
+
+.packed {
+  margin-bottom: 7px;
+}
+
+.packed td {
+  padding: 0;
+  background: #fff;
+}
+
+.tile {
+  min-height: 34px;
+  display: grid;
+  grid-template-rows: auto 1fr;
+}
+
+.tile-key {
+  padding: 3px 4px;
+  background: var(--soft);
+  color: var(--muted);
+  font-weight: 700;
+  border-bottom: 1px solid var(--line);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.tile-value {
+  padding: 4px;
+  background: #fff;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.tile-pad {
+  border: 0;
+  background: transparent;
+}
+
+.items-list {
+  display: grid;
+  gap: 7px;
+}
+
+.item-block {
+  border: 1px solid var(--line-strong);
+  break-inside: avoid;
+}
+
+.item-title {
+  padding: 4px 6px;
+  background: var(--accent-soft);
+  border-bottom: 1px solid var(--line-strong);
+  font-weight: 700;
+}
+
+.item-block .packed {
+  margin-bottom: 0;
+}
+
+.item-extra {
+  border-top: 1px solid var(--line-strong);
+}
+
+.item-block .tile {
+  min-height: 30px;
+}
+
+.group {
+  margin-top: 7px;
+  break-inside: avoid;
+}
+
+.group-title {
+  padding: 4px 6px;
+  border: 1px solid var(--line-strong);
+  border-bottom: 0;
+  background: var(--accent-soft);
+  font-weight: 700;
+}
+
+.notice {
+  margin: 8px 0;
+  padding: 7px 8px;
+  border: 1px solid #e2c568;
+  background: var(--warn);
+  color: #5b4805;
+}
+
+.hidden {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+  body {
+    background: #fff;
+  }
+  .toolbar {
+    display: none;
+  }
+  .page-wrap {
+    padding: 0;
+    overflow: visible;
+  }
+  .paper {
+    width: 210mm;
+    min-height: 0;
+    margin: 0;
+    box-shadow: none;
+  }
+}
